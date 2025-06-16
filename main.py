@@ -45,7 +45,7 @@ b1z1_joints = [
         'z1_jointGripper'
 ]
 
-b1z1 = scene.add_entity(gs.morphs.URDF(file="/home/lily-hcrlab/genesis_b1z1/robots/b1z1/urdf/b1z1.urdf"))
+b1z1 = scene.add_entity(gs.morphs.URDF(file="robots/b1z1/urdf/b1z1.urdf"))
 
 dofs_idx = [b1z1.get_joint(name).dof_idx_local for name in b1z1_joints]
 
@@ -56,7 +56,7 @@ print(dofs_idx)
 
 # create 20 parallel environments
 B = 20
-scene.build(n_envs=20, env_spacing=(10.0, 10.0))
+scene.build(n_envs=4, env_spacing=(1.0, 1.0))
 
 for i in range(1000):
     scene.step()
@@ -65,3 +65,5 @@ for i in range(1000):
 ########################## run   ##########################
 for i in range(1000):
    scene.step()
+
+
