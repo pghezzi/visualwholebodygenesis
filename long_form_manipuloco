@@ -59,8 +59,7 @@
 # Copyright (c) 2021 ETH Zurich, Nikita Rudin
 
 import sys
-from isaacgym.torch_utils import *
-from isaacgym import gymtorch, gymapi, gymutil
+
 import numpy as np
 import torch
 from torch import Tensor
@@ -68,18 +67,65 @@ import time
 import os
 from typing import Tuple, Dict
 from time import time
-from warnings import WarningMessage
 
-from legged_gym import LEGGED_GYM_ROOT_DIR, envs
-from legged_gym.utils.terrain import Terrain, Terrain_Perlin
-from legged_gym.utils.math import quat_apply_yaw, wrap_to_pi, torch_rand_sqrt_float
-from legged_gym.utils.helpers import class_to_dict
-from .legged_robot_config import LeggedRobotCfg
-from .b1z1_config import B1Z1RoughCfg
+from wbc_cfg import LeggedRobotCfg, B1Z1RoughCfg
+from misc.torch_utils import *
+import misc.gymutil
+
+LEGGED_GYM_ROOT_DIR = ""
+
+
+# from legged_gym import envs #not used in code proper
+
+from legged_gym.utils.terrain import Terrain #Terrain_Perlin not used in code proper
+
+#unwrap tensors
+from isaacgym import gymtorch
+
+#replace with genesis
+from isaacgym import gymapi
+
+
+def class_to_dict(obj) -> dict:
+    if not  hasattr(obj,"__dict__"):
+        return obj
+    result = {}
+    for key in dir(obj):
+        if key.startswith("_"):
+            continue
+        element = []
+        val = getattr(obj, key)
+        if isinstance(val, list):
+            for item in val:
+                element.append(class_to_dict(item))
+        else:
+            element = class_to_dict(val)
+        result[key] = element
+    return result
+
+# @ torch.jit.script
+def quat_apply_yaw(quat, vec):
+    quat_yaw = quat.clone().view(-1, 4)
+    quat_yaw[:, :2] = 0.
+    quat_yaw = normalize(quat_yaw)
+    return quat_apply(quat_yaw, vec)
+
+# @ torch.jit.script
+def wrap_to_pi(angles):
+    angles %= 2*np.pi
+    angles -= 2*np.pi * (angles > np.pi)
+    return angles
+
+# @ torch.jit.script
+def torch_rand_sqrt_float(lower, upper, shape, device):
+    # type: (float, float, Tuple[int, int], str) -> Tensor
+    r = 2*torch.rand(*shape, device=device) - 1
+    r = torch.where(r<0., -torch.sqrt(-r), torch.sqrt(r))
+    r =  (r + 1.) / 2.
+    return (upper - lower) * r + lower
 
 # Base class for RL tasks
 class BaseTask():
-
     def __init__(self, cfg, sim_params, physics_engine, sim_device, headless):
         self.gym = gymapi.acquire_gym()
 
@@ -1515,7 +1561,7 @@ class ManipLoco(LeggedRobot):
         """ Prepares a list of reward functions, whcih will be called to compute the total reward.
             Looks for self._reward_<REWARD_NAME>, where <REWARD_NAME> are names of all non zero reward scales in the cfg.
         """
-        from legged_gym.envs.rewards.maniploco_rewards import ManipLoco_rewards 
+        from maniploco_rewards import ManipLoco_rewards
 
         reward_contrainers = {"maniploco_rewards": ManipLoco_rewards}
         self.reward_container = reward_contrainers[self.cfg.rewards.reward_container_name](self)

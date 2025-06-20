@@ -1,5 +1,5 @@
 import torch
-from torch_utils import *
+from misc.torch_utils import *
 
 class ManipLoco_rewards:
     def __init__(self, env):
