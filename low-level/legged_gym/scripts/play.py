@@ -122,7 +122,7 @@ def play(args):
             logger.print_rewards()
 
 if __name__ == '__main__':
-    EXPORT_POLICY = False
+    EXPORT_POLICY = True
     RECORD_FRAMES = False  # only record frames in extra camera view
     MOVE_CAMERA   = False
     FOLLOW_ROBOT  = True

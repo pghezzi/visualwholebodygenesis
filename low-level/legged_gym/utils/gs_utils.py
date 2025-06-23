@@ -1,12 +1,94 @@
 import numpy as np
 import torch
-
+import ti.math.vec3 as Vec3
+import genesis as gs
 
 def wrap_to_pi(angles):
     angles %= 2 * np.pi
     angles -= 2 * np.pi * (angles > np.pi)
     return angles
 
+@torch.jit.script
+def torch_wrap_to_pi_minuspi(theta):
+    # type: (Tensor) -> Tensor
+    return (theta + np.pi) % (2 * np.pi) - np.pi
+
+
+
+def gs_get_root_states(sim: gs.Simulator, num_envs: int):
+    """
+    Retrieves actor states from a Genesis Simulator and returns:
+      - root_states: (num_envs, 13) for actor 0
+      - box_root_state: (num_envs, 13) for actor 1
+
+    Assumes sim.get_state().root returns a tensor of shape (num_envs, 2, 13)
+    """
+    state = sim.get_state()  # snapshot of all actors
+    # Expecting shape [num_envs, 2, 13] for two actors per env
+    root_states_all = state.root  # or state.pos concatenated with vel/quaternion
+    assert root_states_all.shape == (num_envs, 2, 13), \
+        f"Unexpected root shape {root_states_all.shape}, expected ({num_envs},2,13)"
+
+    root_states = root_states_all[:, 0, :]     # first actor per env
+    box_root_state = root_states_all[:, 1, :]  # second actor per env
+    return root_states, box_root_state
+
+
+def gs_get_contact_forces(entity: gs.RigidEntity, num_envs: int, num_bodies: int):
+    """
+    Returns (contact_forces, box_contact_force): torch.FloatTensor
+      - contact_forces: (num_envs, num_bodies, 3)
+      - box_contact_force: (num_envs, 3)
+    """
+    # get_links_net_contact_force returns list of tensors per link
+    all_forces = [link.get_net_contact_force() for link in entity.links]
+    # Stack into (n_links, num_envs, 3)
+    stacked = torch.stack(all_forces, dim=1)
+    # split—assuming the last link is your box
+    contact_forces = stacked[:, :num_bodies, :]
+    box_contact_force = stacked[:, num_bodies, :]
+    return contact_forces, box_contact_force
+
+def gs_get_rigid_body_states(entity: gs.RigidEntity, num_envs: int, num_bodies: int, feet_indices, gripper_idx):
+    """
+    Returns:
+      - rigid_body_state: (num_envs, num_bodies + 1, 13)
+      - foot_velocities: (num_envs, len(feet_indices), 3)
+      - foot_positions: (num_envs, len(feet_indices), 3)
+      - ee_pos, ee_orn, ee_vel: each (num_envs, dim)
+    """
+    qs = entity.get_dofs_position()
+    vel = entity.get_dofs_velocity()
+    orn = entity.get_links_quat()
+    pos = entity.get_links_pos()
+    # stack for all links (base + links)
+    body_state = torch.cat([pos, orn, vel], dim=-1)  # shape (num_envs, n_links, 13)
+
+    rigid_body_state = body_state
+    foot_velocities = body_state[:, feet_indices, 7:10]
+    foot_positions = body_state[:, feet_indices, 0:3]
+    ee_pos = body_state[:, gripper_idx, 0:3]
+    ee_orn = body_state[:, gripper_idx, 3:7]
+    ee_vel = body_state[:, gripper_idx, 7:]
+    return rigid_body_state, foot_velocities, foot_positions, ee_pos, ee_orn, ee_vel
+
+def gs_get_jacobian(entity: gs.RigidEntity, gripper_idx: int, num_gripper_joints: int):
+    """
+    Returns: ee_j_eef (jacobian at end-effector)
+      shape: (num_envs, end_dim, num_active_dofs)
+    """
+    # full jacobian at link-level
+    J_full = entity.get_jacobian(link=entity.links[gripper_idx])
+    # slice to skip gripper joints
+    ee_j_eef = J_full[:, :6, -(6 + num_gripper_joints):-num_gripper_joints]
+    return ee_j_eef
+
+def gs_get_force_sensors(sensor_entities: List[gs.RigidEntity], num_envs: int):
+    """
+    Returns a stacked tensor of size (num_envs, n_sensors, 6)
+    """
+    sensor_values = [sensor.get_dofs_force() for sensor in sensor_entities]
+    return torch.stack(sensor_values, dim=1)
 
 def gs_rand_float(lower, upper, shape, device):
     return (upper - lower) * torch.rand(size=shape, device=device) + lower
@@ -138,3 +220,125 @@ def gs_quat_conjugate(a):
     shape = a.shape
     a = a.reshape(-1, 4)
     return torch.cat((a[:, :1], -a[:, 1:], ), dim=-1).view(shape)
+
+
+## added by pghezzi
+
+"""
+Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
+
+NVIDIA CORPORATION and its licensors retain all intellectual property
+and proprietary rights in and to this software, related documentation
+and any modifications thereto. Any use, reproduction, disclosure or
+distribution of this software and related documentation without an express
+license agreement from NVIDIA CORPORATION is strictly prohibited.
+"""
+
+
+def gs_orientation_error(desired, current):
+    cc = gs_quat_conjugate(current)
+    q_r = gs_quat_mul(desired, cc)
+    return q_r[:, 0:3] * torch.sign(q_r[:, 3]).unsqueeze(-1)
+
+
+@torch.jit.script
+def gs_quat_rotate_inverse(q, v):
+    shape = q.shape
+    q_w = q[:, -1]
+    q_vec = q[:, :3]
+    a = v * (2.0 * q_w ** 2 - 1.0).unsqueeze(-1)
+    b = torch.cross(q_vec, v, dim=-1) * q_w.unsqueeze(-1) * 2.0
+    c = q_vec * \
+        torch.bmm(q_vec.view(shape[0], 1, 3), v.view(
+            shape[0], 3, 1)).squeeze(-1) * 2.0
+    return a - b + c
+
+
+@torch.jit.script
+def gs_quat_from_euler_xyz(roll, pitch, yaw):
+    cy = torch.cos(yaw * 0.5)
+    sy = torch.sin(yaw * 0.5)
+    cr = torch.cos(roll * 0.5)
+    sr = torch.sin(roll * 0.5)
+    cp = torch.cos(pitch * 0.5)
+    sp = torch.sin(pitch * 0.5)
+
+    qw = cy * cr * cp + sy * sr * sp
+    qx = cy * sr * cp - sy * cr * sp
+    qy = cy * cr * sp + sy * sr * cp
+    qz = sy * cr * cp - cy * sr * sp
+
+    return torch.stack([qx, qy, qz, qw], dim=-1)
+
+@torch.jit.script
+def gs_euler_from_quat(quat_angle):
+    """
+    Convert a quaternion into euler angles (roll, pitch, yaw)
+    roll is rotation around x in radians (counterclockwise)
+    pitch is rotation around y in radians (counterclockwise)
+    yaw is rotation around z in radians (counterclockwise)
+    """
+    x = quat_angle[:,0]
+    y = quat_angle[:,1]
+    z = quat_angle[:,2]
+    w = quat_angle[:,3]
+    t0 = 2.0 * (w * x + y * z)
+    t1 = 1.0 - 2.0 * (x * x + y * y)
+    roll_x = torch.atan2(t0, t1)
+    
+    t2 = 2.0 * (w * y - z * x)
+    t2 = torch.clip(t2, -1, 1)
+    pitch_y = torch.asin(t2)
+    
+    t3 = 2.0 * (w * z + x * y)
+    t4 = 1.0 - 2.0 * (y * y + z * z)
+    yaw_z = torch.atan2(t3, t4)
+    
+    return roll_x, pitch_y, yaw_z # in radians
+
+@torch.jit.script
+def gs_sphere2cart(sphere_coords):
+    # type: (Tensor) -> Tensor
+    """ Convert spherical coordinates to cartesian coordinates
+    Args:
+        sphere_coords (torch.Tensor): Spherical coordinates (l, pitch, yaw)
+    Returns:
+        cart_coords (torch.Tensor): Cartesian coordinates (x, y, z)
+    """
+    l = sphere_coords[:, 0]
+    pitch = sphere_coords[:, 1]
+    yaw = sphere_coords[:, 2]
+    cart_coords = torch.zeros_like(sphere_coords)
+    cart_coords[:, 0] = l * torch.cos(pitch) * torch.cos(yaw)
+    cart_coords[:, 1] = l * torch.cos(pitch) * torch.sin(yaw)
+    cart_coords[:, 2] = l * torch.sin(pitch)
+    return cart_coords
+
+@torch.jit.script
+def gs_cart2sphere(cart_coords):
+    # type: (Tensor) -> Tensor
+    """ Convert cartesian coordinates to spherical coordinates
+    Args:
+        cart_coords (torch.Tensor): Cartesian coordinates (x, y, z)
+    Returns:
+        sphere_coords (torch.Tensor): Spherical coordinates (l, pitch, yaw)
+    """
+    sphere_coords = torch.zeros_like(cart_coords)
+    xy_len = torch.norm(cart_coords[:, :2], dim=1)
+    sphere_coords[:, 0] = torch.norm(cart_coords, dim=1)
+    sphere_coords[:, 1] = torch.atan2(cart_coords[:, 2], xy_len)
+    sphere_coords[:, 2] = torch.atan2(cart_coords[:, 1], cart_coords[:, 0])
+    return sphere_coords
+
+def to_torch(x, dtype=torch.float, device='cuda:0', requires_grad=False):
+    return torch.tensor(x, dtype=dtype, device=device, requires_grad=requires_grad)
+
+def get_axis_params(value, axis_idx, x_value=0., dtype=float, n_dims=3):
+    """construct arguments to `Vec` according to axis index.
+    """
+    zs = np.zeros((n_dims,))
+    assert axis_idx < n_dims, "the axis dim should be within the vector dimensions"
+    zs[axis_idx] = 1.
+    params = np.where(zs == 1., value, zs)
+    params[0] = x_value
+    return list(params.astype(dtype))

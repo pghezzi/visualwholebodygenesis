@@ -22,8 +22,7 @@ scene = gs.Scene(
 ########################## entities ##########################
 plane = scene.add_entity(gs.morphs.Plane())
 
-b1z1_joints = [
-        'joint_base', 
+b1z1_joints = [ 
         'FR_hip_joint', 
         'FL_hip_joint', 
         'RR_hip_joint', 

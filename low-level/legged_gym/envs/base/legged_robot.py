@@ -73,6 +73,7 @@ class LeggedRobot(BaseTask):
         self.obs_buf = torch.clip(self.obs_buf, -clip_obs, clip_obs)
         if self.privileged_obs_buf is not None:
             self.privileged_obs_buf = torch.clip(self.privileged_obs_buf, -clip_obs, clip_obs)
+        print(f"LOL2:{self.obs_buf.shape}")
         return self.obs_buf, self.privileged_obs_buf, self.rew_buf, self.reset_buf, self.extras
 
     def post_physics_step(self):
@@ -330,7 +331,8 @@ class LeggedRobot(BaseTask):
         self._recording = False
         self._recorded_frames = []
     
-    def _post_physics_step_callback(self):
+    def _post_physics
+    _step_callback(self):
         """ Callback called before computing terminations, rewards, and observations
             Default behaviour: Compute ang vel command based on target and heading, compute measured terrain heights and randomly push robots
         """
@@ -572,7 +574,6 @@ class LeggedRobot(BaseTask):
         # PD control
         stiffness = self.cfg.control.stiffness
         damping = self.cfg.control.damping
-        
         self.p_gains, self.d_gains = [], []
         for dof_name in self.cfg.asset.dof_names:
             for key in stiffness.keys():
