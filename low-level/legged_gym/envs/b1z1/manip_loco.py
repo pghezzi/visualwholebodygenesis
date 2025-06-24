@@ -66,17 +66,74 @@ class ManipLoco(LeggedRobot):
         self.stand_by = cfg.env.stand_by
         super().__init__(cfg, *args, **kwargs)
     
+    # def step(self, actions):
+    #     """ Apply actions, simulate, call self.post_physics_step()
+
+    #     Args:
+    #         actions (torch.Tensor): Tensor of shape (num_envs, num_actions_per_env)
+    #     """
+    #     actions[:, 12:] = 0.
+    #     actions = self._reindex_all(actions)
+    #     actions = torch.clip(actions, -self.clip_actions, self.clip_actions).to(self.device)
+    #     # step physics and render each frame
+    #     #Avinash: change this compatible to genesis
+    #     # self.render()
+    #     if self.action_delay != -1:
+    #         self.action_history_buf = torch.cat([self.action_history_buf[:, 1:], actions[:, None, :]], dim=1)
+    #         # actions = self.action_history_buf[:, -self.action_delay - 1] # delay for 1/50=20ms
+    #     if self.global_steps < 10000 * 24:
+    #         actions = self.action_history_buf[:, -1]
+    #     else:
+    #         actions = self.action_history_buf[:, -2]
+
+    #     self.actions = actions.clone()
+        
+    #     # arm ik actions
+    #     # uncomment this if needing to mask out gripper joints
+    #     # self.curr_ee_goal_cart[:] = sphere2cart(self.curr_ee_goal_sphere)
+    #     # ee_goal_cart_yaw_global = quat_apply(self.base_yaw_quat, self.curr_ee_goal_cart)
+    #     # curr_ee_goal_cart_world = self._get_ee_goal_spherical_center() + ee_goal_cart_yaw_global
+        
+    #     dpos = self.curr_ee_goal_cart_world - self.ee_pos
+    #     drot = orientation_error(self.ee_goal_orn_quat, self.ee_orn / torch.norm(self.ee_orn, dim=-1).unsqueeze(-1))
+    #     dpose = torch.cat([dpos, drot], -1).unsqueeze(-1)
+    #     arm_pos_targets = self._control_ik(dpose) + self.dof_pos[:, -(6 + self.cfg.env.num_gripper_joints):-self.cfg.env.num_gripper_joints]
+    #     all_pos_targets = torch.zeros_like(self.dof_pos)
+    #     all_pos_targets[:, -(6 + self.cfg.env.num_gripper_joints):-self.cfg.env.num_gripper_joints] = arm_pos_targets
+
+    #     for t in range(self.cfg.control.decimation):
+    #         self.torques = self._compute_torques(self.actions)
+    #         self.gym.set_dof_position_target_tensor(self.sim, gymtorch.unwrap_tensor(all_pos_targets))
+    #         self.gym.set_dof_actuation_force_tensor(self.sim, gymtorch.unwrap_tensor(self.torques))
+    #         self.gym.simulate(self.sim)
+    #         if self.device == 'cpu':
+    #             self.gym.fetch_results(self.sim, True)
+    #         self.gym.refresh_dof_state_tensor(self.sim)
+    #         self.gym.refresh_jacobian_tensors(self.sim)
+    #         self.gym.refresh_rigid_body_state_tensor(self.sim)
+    #     self.post_physics_step()
+
+    #     # return clipped obs, clipped states (None), rewards, dones and infos
+    #     clip_obs = self.cfg.normalization.clip_observations
+    #     self.obs_buf = torch.clip(self.obs_buf, -clip_obs, clip_obs)
+    #     if self.privileged_obs_buf is not None:
+    #         self.privileged_obs_buf = torch.clip(self.privileged_obs_buf, -clip_obs, clip_obs)
+    #     self.global_steps += 1
+    #     return self.obs_buf, self.privileged_obs_buf, self.rew_buf, self.arm_rew_buf, self.reset_buf, self.extras
+    
     def post_physics_step(self):
         """ check terminations, compute observations and rewards
         calls self._post_physics_step_callback() for common computations 
         calls self._draw_debug_vis() if needed
         """
+        #Avinash: change this compatible to genesis
         # self.gym.refresh_dof_state_tensor(self.sim)
         # self.gym.refresh_actor_root_state_tensor(self.sim)
         # self.gym.refresh_net_contact_force_tensor(self.sim)
         # self.gym.refresh_force_sensor_tensor(self.sim)
         # self.gym.refresh_rigid_body_state_tensor(self.sim)
         # self.gym.refresh_jacobian_tensors(self.sim)
+
         self.episode_length_buf += 1
         self.common_step_counter += 1
 
@@ -186,7 +243,8 @@ class ManipLoco(LeggedRobot):
         if self.cfg.env.observe_gait_commands:
             obs_buf = torch.cat((obs_buf,
                                       self.gait_indices.unsqueeze(1), self.clock_inputs), dim=-1)
-            
+        
+        #Avinash: change this compatible to genesis
         if self.cfg.domain_rand.observe_priv:
             priv_buf = torch.cat((
                 self.mass_params_tensor,
