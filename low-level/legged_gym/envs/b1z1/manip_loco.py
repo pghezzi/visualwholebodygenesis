@@ -139,12 +139,12 @@ class ManipLoco(LeggedRobot):
 
         # prepare quantities
         self.base_quat[:] = self.root_states[:, 3:7]
-        self.base_lin_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
-        self.base_ang_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
-        base_yaw = euler_from_quat(self.base_quat)[2]
+        self.base_lin_vel[:] = gs_quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
+        self.base_ang_vel[:] = gs_quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
+        base_yaw = gs_euler_from_quat(self.base_quat)[2]
         self.base_yaw_euler[:] = torch.cat([torch.zeros(self.num_envs, 2, device=self.device), base_yaw.view(-1, 1)], dim=1)
-        self.base_yaw_quat[:] = quat_from_euler_xyz(torch.tensor(0), torch.tensor(0), base_yaw)
-        self.projected_gravity[:] = quat_rotate_inverse(self.base_quat, self.gravity_vec)
+        self.base_yaw_quat[:] = gs_quat_from_euler_xyz(torch.tensor(0), torch.tensor(0), base_yaw)
+        self.projected_gravity[:] = gs_quat_rotate_inverse(self.base_quat, self.gravity_vec)
 
         contact = torch.norm(self.contact_forces[:, self.feet_indices], dim=-1) > 2.
         self.contact_filt = torch.logical_or(contact, self.last_contacts) 
