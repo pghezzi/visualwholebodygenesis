@@ -41,7 +41,7 @@ from legged_gym.utils.gs_utils import *
 
 
 from legged_gym.utils.math import quat_apply_yaw, wrap_to_pi, torch_rand_sqrt_float
-
+from legged_gym.utils.math import quat_rotate_inverse, quat_from_euler_xyz, euler_from_quat
 import torch
 from typing import Tuple, Dict
 
@@ -65,7 +65,60 @@ class ManipLoco(LeggedRobot):
             self.num_obs = cfg.env.num_observations
         self.stand_by = cfg.env.stand_by
         super().__init__(cfg, *args, **kwargs)
+    
+    def post_physics_step(self):
+        """ check terminations, compute observations and rewards
+        calls self._post_physics_step_callback() for common computations 
+        calls self._draw_debug_vis() if needed
+        """
+        # self.gym.refresh_dof_state_tensor(self.sim)
+        # self.gym.refresh_actor_root_state_tensor(self.sim)
+        # self.gym.refresh_net_contact_force_tensor(self.sim)
+        # self.gym.refresh_force_sensor_tensor(self.sim)
+        # self.gym.refresh_rigid_body_state_tensor(self.sim)
+        # self.gym.refresh_jacobian_tensors(self.sim)
+        self.episode_length_buf += 1
+        self.common_step_counter += 1
 
+        # prepare quantities
+        self.base_quat[:] = self.root_states[:, 3:7]
+        self.base_lin_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
+        self.base_ang_vel[:] = quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
+        base_yaw = euler_from_quat(self.base_quat)[2]
+        self.base_yaw_euler[:] = torch.cat([torch.zeros(self.num_envs, 2, device=self.device), base_yaw.view(-1, 1)], dim=1)
+        self.base_yaw_quat[:] = quat_from_euler_xyz(torch.tensor(0), torch.tensor(0), base_yaw)
+        self.projected_gravity[:] = quat_rotate_inverse(self.base_quat, self.gravity_vec)
+
+        contact = torch.norm(self.contact_forces[:, self.feet_indices], dim=-1) > 2.
+        self.contact_filt = torch.logical_or(contact, self.last_contacts) 
+        self.last_contacts = contact
+
+        self.foot_contacts_from_sensor = self.force_sensor_tensor.norm(dim=-1) > 1.5    
+
+        self._post_physics_step_callback()
+        
+        # update ee goal
+        self._update_curr_ee_goal()
+
+        # compute observations, rewards, resets, ...
+        self.check_termination()
+        self.compute_reward()
+        env_ids = self.reset_buf.nonzero(as_tuple=False).flatten()
+        self.reset_idx(env_ids, start=False)
+        self.compute_observations() # in some cases a simulation step might be required to refresh some obs (for example body positions)
+
+        self.last_actions[:] = self.actions[:]
+        self.last_dof_vel[:] = self.dof_vel[:]
+        self.last_root_vel[:] = self.root_states[:, 7:13]
+        self.last_torques[:] = self.torques[:]
+        
+        # Avinash - change this into genesis
+        # if (self.viewer and self.enable_viewer_sync and self.debug_viz) or self.record_video:
+        #     self.gym.clear_lines(self.viewer)
+        #     self._draw_ee_goal_curr()
+        #     self._draw_ee_goal_traj()
+        #     self._draw_collision_bbox()
+    
     def compute_reward(self):
         """ Compute rewards
             Calls each reward function which had a non-zero scale (processed in self._prepare_reward_function())
