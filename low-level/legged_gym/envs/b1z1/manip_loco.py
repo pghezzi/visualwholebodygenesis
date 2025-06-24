@@ -744,7 +744,7 @@ class ManipLoco(LeggedRobot):
         # self.target_ee = torch.zeros(self.num_envs, self.cfg.target_ee.num_commands, dtype=torch.float, device=self.device, requires_grad=False) # ee x, ee y, ee z
         self.gripper_torques_zero = torch.zeros(self.num_envs, self.cfg.env.num_gripper_joints, device=self.device)
 
-        self.feet_air_time = torch.zeros(self.num_envs, self.feet_indices.shape[0], dtype=torch.float, device=self.device, requires_grad=False)
+        self.feet_air_time = torch.zeros(self.num_envs, len(self.feet_indices), dtype=torch.float, device=self.device, requires_grad=False)
         self.base_lin_vel = gs_quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
         self.base_ang_vel = gs_quat_rotate_inverse(self.base_quat, self.root_states[:, 10:13])
         self.projected_gravity = gs_quat_rotate_inverse(self.base_quat, self.gravity_vec)
