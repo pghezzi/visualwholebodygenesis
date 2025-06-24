@@ -331,8 +331,7 @@ class LeggedRobot(BaseTask):
         self._recording = False
         self._recorded_frames = []
     
-    def _post_physics
-    _step_callback(self):
+    def _post_physics_step_callback(self):
         """ Callback called before computing terminations, rewards, and observations
             Default behaviour: Compute ang vel command based on target and heading, compute measured terrain heights and randomly push robots
         """
