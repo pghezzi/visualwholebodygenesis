@@ -599,57 +599,49 @@ class ManipLoco(LeggedRobot):
         """ Initial size torch tensors which will contain simulation states and processed quantities
         """
         
+        # Initialize gripper index
+        self.gripper_idx = self.robot.get_link_idx(self.cfg.asset.gripper_name)-1  # -1 since link indices start from 1
+        
         self.action_scale = torch.tensor(self.cfg.control.action_scale, device=self.device)
-
+        
         # get gym GPU state tensors
+        # get dof state
+        self.dof_pos, self.dof_vel, self.dof_pos_wo_gripper, self.dof_vel_wo_gripper = gs_get_dof_state(
+            entity=self.robot,
+            num_envs=self.num_envs, 
+            num_dofs=len(self.motor_dofs),
+            num_gripper_joints=self.cfg.env.num_gripper_joints)
         
-        #dof_state_tensor = self.gym.acquire_dof_state_tensor(self.sim)
-        #self.gym.refresh_dof_state_tensor(self.sim)
-        #self.dof_state = gymtorch.wrap_tensor(dof_state_tensor)
-        #self.dof_pos = self.dof_state.view(self.num_envs, self.num_dofs, 2)[..., 0]
-        #self.dof_vel = self.dof_state.view(self.num_envs, self.num_dofs, 2)[..., 1]
-
-        self.dof_pos_wo_gripper = self.dof_pos[:, :-self.cfg.env.num_gripper_joints]
-        self.dof_vel_wo_gripper = self.dof_vel[:, :-self.cfg.env.num_gripper_joints]
-
-        actor_root_state = self.gym.acquire_actor_root_state_tensor(self.sim)
-        self.gym.refresh_actor_root_state_tensor(self.sim)
-        self._root_states = gymtorch.wrap_tensor(actor_root_state).view(self.num_envs, 2, 13) # 2 actors
-        self.root_states = self._root_states[:, 0, :]
-        self.box_root_state = self._root_states[:, 1, :]
-
-
-        net_contact_forces = self.gym.acquire_net_contact_force_tensor(self.sim)
-        self.gym.refresh_net_contact_force_tensor(self.sim)
-        self._contact_forces = gymtorch.wrap_tensor(net_contact_forces).view(self.num_envs, -1, 3) # shape: num_envs, num_bodies, xyz axis
-        self.contact_forces = self._contact_forces[:, :-1, :]
-        self.box_contact_force = self._contact_forces[:, -1, :]
-
-        rigid_body_state_tensor = self.gym.acquire_rigid_body_state_tensor(self.sim)
-        self.gym.refresh_rigid_body_state_tensor(self.sim)
-        self._rigid_body_state = gymtorch.wrap_tensor(rigid_body_state_tensor).view(self.num_envs, self.num_bodies + 1, 13)
-        self.rigid_body_state = self._rigid_body_state[:, :-1, :]
-        self.box_rigid_body_state = self._rigid_body_state[:, -1, :]
-        self.foot_velocities = self.rigid_body_state.view(self.num_envs, self.num_bodies, 13)[:,
-                               self.feet_indices,
-                               7:10]
-        self.foot_positions = self.rigid_body_state.view(self.num_envs, self.num_bodies, 13)[:, self.feet_indices,
-                               0:3]
-        self.ee_pos = self.rigid_body_state[:, self.gripper_idx, :3]
-        self.ee_orn = self.rigid_body_state[:, self.gripper_idx, 3:7]
-        self.ee_vel = self.rigid_body_state[:, self.gripper_idx, 7:]
-
-
-        jacobian_tensor = self.gym.acquire_jacobian_tensor(self.sim, "robot_dog")
-        self.gym.refresh_jacobian_tensors(self.sim)
-        self.jacobian_whole = gymtorch.wrap_tensor(jacobian_tensor)
-        self.ee_j_eef = self.jacobian_whole[:, self.gripper_idx, :6, -(6 + self.cfg.env.num_gripper_joints):-self.cfg.env.num_gripper_joints]
-
-
-        force_sensor_tensor = self.gym.acquire_force_sensor_tensor(self.sim)
-        self.gym.refresh_force_sensor_tensor(self.sim)
-        self.force_sensor_tensor = gymtorch.wrap_tensor(force_sensor_tensor).view(self.num_envs, 4, 6)        
+        # get root states
+        self.root_states, self.box_root_state = gs_get_root_states(
+            sim=self.scene,
+            num_envs=self.num_envs)
         
+        # get contact forces
+        self.contact_forces, self.box_contact_force = gs_get_contact_forces(
+            entity=self.robot,
+            num_envs=self.num_envs,
+            num_bodies=len(self.robot.links)-1) # -1 for base link
+    
+        # get rigid body state
+        self.rigid_body_state, self.foot_velocities, self.foot_positions, self.ee_pos, self.ee_orn, self.ee_vel = gs_get_rigid_body_states(
+            entity=self.robot,
+            num_envs=self.num_envs,
+            num_bodies=len(self.robot.links)-1, # -1 for base link
+            feet_indices=self.feet_indices,
+            gripper_idx=self.gripper_idx)
+
+        # get jacobian
+        self.jacobian_whole, self.ee_j_eef = gs_get_jacobian(
+            entity=self.robot,
+            gripper_idx=self.gripper_idx,
+            num_gripper_joints=self.cfg.env.num_gripper_joints)
+
+        # get force sensor
+        self.force_sensor_tensor = gs_get_force_sensors(
+            sensor_entities=self.robot.links,
+            num_envs=self.num_envs)
+
         self.arm_base_offset = torch.tensor([0.3, 0., 0.09], device=self.device, dtype=torch.float).repeat(self.num_envs, 1)
         # self.yaw_ema = euler_from_quat(self.base_quat)[2]
         base_yaw = gs_euler_from_quat(self.base_quat)[2]
