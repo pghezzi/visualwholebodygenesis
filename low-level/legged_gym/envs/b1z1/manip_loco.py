@@ -35,6 +35,7 @@ import os
 import genesis as gs
 
 from legged_gym.utils.gs_utils import *
+from ti.math.vec3 import Vec3
 
 #fix this
 #from isaacgym import gymtorch, gymapi, gymutil
@@ -1097,7 +1098,7 @@ class ManipLoco(LeggedRobot):
             return body_angles
         
 
-    #TODO PORT
+    #TODO PORT Avinash
     def _draw_collision_bbox(self):
         center = self.ee_goal_center_offset
         bbox0 = center + self.collision_upper_limits
