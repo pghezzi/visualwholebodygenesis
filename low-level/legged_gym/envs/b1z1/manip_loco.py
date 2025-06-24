@@ -601,15 +601,17 @@ class ManipLoco(LeggedRobot):
         
         # Initialize gripper index
         self.gripper_idx = self.robot.get_link_idx(self.cfg.asset.gripper_name)-1  # -1 since link indices start from 1
-        
+        self.num_dofs = len(self.motor_dofs)
+        self.num_bodies = len(self.robot.links)-1 # -1 for base link
+        self.up_axis_idx = 2 # 2 for z, 1 for y -> adapt gravity accordingly
         self.action_scale = torch.tensor(self.cfg.control.action_scale, device=self.device)
-        
+
         # get gym GPU state tensors
         # get dof state
         self.dof_pos, self.dof_vel, self.dof_pos_wo_gripper, self.dof_vel_wo_gripper = gs_get_dof_state(
             entity=self.robot,
             num_envs=self.num_envs, 
-            num_dofs=len(self.motor_dofs),
+            num_dofs=self.num_dofs,
             num_gripper_joints=self.cfg.env.num_gripper_joints)
         
         # get root states
@@ -621,13 +623,13 @@ class ManipLoco(LeggedRobot):
         self.contact_forces, self.box_contact_force = gs_get_contact_forces(
             entity=self.robot,
             num_envs=self.num_envs,
-            num_bodies=len(self.robot.links)-1) # -1 for base link
+            num_bodies=self.num_bodies)
     
         # get rigid body state
         self.rigid_body_state, self.foot_velocities, self.foot_positions, self.ee_pos, self.ee_orn, self.ee_vel = gs_get_rigid_body_states(
             entity=self.robot,
             num_envs=self.num_envs,
-            num_bodies=len(self.robot.links)-1, # -1 for base link
+            num_bodies=self.num_bodies,
             feet_indices=self.feet_indices,
             gripper_idx=self.gripper_idx)
 
@@ -698,14 +700,14 @@ class ManipLoco(LeggedRobot):
 
         print('------------------------------------------------------')
         print(f'root_states shape: {self.root_states.shape}')
-        print(f'dof_state shape: {self.dof_state.shape}')
+        print(f'dof_pos, vel, pos_wo_gripper, vel_wo_gripper: {self.dof_pos.shape}, {self.dof_vel.shape}, {self.dof_pos_wo_gripper.shape}, {self.dof_vel_wo_gripper.shape}')
         print(f'force_sensor_tensor shape: {self.force_sensor_tensor.shape}')
         print(f'contact_forces shape: {self.contact_forces.shape}')
         print(f'rigid_body_state shape: {self.rigid_body_state.shape}')
         print(f'jacobian_whole shape: {self.jacobian_whole.shape}')
         print(f'box_root_state shape: {self.box_root_state.shape}')
         print(f'box_contact_force shape: {self.box_contact_force.shape}')
-        print(f'box_rigid_body_state shape: {self.box_rigid_body_state.shape}')
+        print(f'rigid_body_state, foot_velocities, foot_positions, ee_pos, ee_orn, ee_vel: {self.rigid_body_state}, {self.foot_velocities}, {self.foot_positions}, {self.ee_pos}, {self.ee_orn}, {self.ee_vel}')
         print('------------------------------------------------------')
         
         # initialize some data used later on
