@@ -2,6 +2,9 @@ import numpy as np
 import torch
 import ti.math.vec3 as Vec3
 import genesis as gs
+import torch
+from typing import List
+
 
 def wrap_to_pi(angles):
     angles %= 2 * np.pi
@@ -13,6 +16,28 @@ def torch_wrap_to_pi_minuspi(theta):
     # type: (Tensor) -> Tensor
     return (theta + np.pi) % (2 * np.pi) - np.pi
 
+
+def gs_get_dof_state(entity: gs.HybridEntity, num_envs: int, num_dofs: int, num_gripper_joints: int):
+    """
+    Replaces Gym's DOF state capture.
+    
+    Returns:
+        dof_pos: (num_envs, num_dofs)
+        dof_vel: (num_envs, num_dofs)
+        dof_pos_wo_gripper: (num_envs, num_dofs - num_gripper_joints)
+        dof_vel_wo_gripper: (num_envs, num_dofs - num_gripper_joints)
+    """
+    pos = entity.get_dofs_position()  # shape: num_envs × num_dofs
+    vel = entity.get_dofs_velocity()  # shape: num_envs × num_dofs
+
+    # Optionally convert to PyTorch
+    dof_pos = torch.tensor(pos, dtype=torch.float32)
+    dof_vel = torch.tensor(vel, dtype=torch.float32)
+
+    dof_pos_wo_gripper = dof_pos[:, :-num_gripper_joints]
+    dof_vel_wo_gripper = dof_vel[:, :-num_gripper_joints]
+
+    return dof_pos, dof_vel, dof_pos_wo_gripper, dof_vel_wo_gripper
 
 
 def gs_get_root_states(sim: gs.Simulator, num_envs: int):
