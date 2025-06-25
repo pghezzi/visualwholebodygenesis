@@ -51,17 +51,43 @@ def gs_get_root_states(sim: Scene, num_envs: int):
       - root_states: (num_envs, 13) for actor 0
       - box_root_state: (num_envs, 13) for actor 1
 
-    Assumes sim.get_state().root returns a tensor of shape (num_envs, 2, 13)
+    In Genesis, we need to access entities directly to get their root states.
     """
-    state: gs.SimState = sim.get_state()  # snapshot of all actors
-    print(sim.entities)
-    # Expecting shape [num_envs, 2, 13] for two actors per env
-    root_states_all = state.root  # or state.pos concatenated with vel/quaternion
-    assert root_states_all.shape == (num_envs, 2, 13), \
-        f"Unexpected root shape {root_states_all.shape}, expected ({num_envs},2,13)"
+    # Get all entities from the scene
+    entities = sim.entities
+    
+    # Assuming we have 2 entities: robot (index 0) and box (index 1)
+    if len(entities) < 2:
+        raise ValueError(f"Expected at least 2 entities, got {len(entities)}")
+    
+    robot_entity = entities[0]  # First entity is the robot
+    box_entity = entities[1]    # Second entity is the box
+    
 
-    root_states = root_states_all[:, 0, :]     # first actor per env
-    box_root_state = root_states_all[:, 1, :]  # second actor per env
+    # # Convert Genesis tensors to PyTorch tensors
+    # robot_pos_torch = torch.tensor(robot_pos, dtype=torch.float32)
+    # robot_quat_torch = torch.tensor(robot_quat, dtype=torch.float32)
+    # robot_lin_vel_torch = torch.tensor(robot_lin_vel, dtype=torch.float32)
+    # robot_ang_vel_torch = torch.tensor(robot_ang_vel, dtype=torch.float32)
+    
+    # Get robot root state: position (3) + quaternion (4) + linear velocity (3) + angular velocity (3) = 13
+    robot_pos = robot_entity.get_pos()  # (num_envs, 3)
+    robot_quat = robot_entity.get_quat()  # (num_envs, 4)
+    robot_lin_vel = robot_entity.get_vel()  # (num_envs, 3)
+    robot_ang_vel = robot_entity.get_ang()  # (num_envs, 3)
+    
+    # Concatenate robot root state
+    root_states = torch.cat([robot_pos, robot_quat, robot_lin_vel, robot_ang_vel], dim=-1)  # (num_envs, 13)
+    
+    # Get box root state
+    box_pos = box_entity.get_pos()  # (num_envs, 3)
+    box_quat = box_entity.get_quat()  # (num_envs, 4)
+    box_lin_vel = box_entity.get_vel()  # (num_envs, 3)
+    box_ang_vel = box_entity.get_ang()  # (num_envs, 3)
+    
+    # Concatenate box root state
+    box_root_state = torch.cat([box_pos, box_quat, box_lin_vel, box_ang_vel], dim=-1)  # (num_envs, 13)
+    
     return root_states, box_root_state
 
 
@@ -71,13 +97,21 @@ def gs_get_contact_forces(entity: RigidEntity, num_envs: int, num_bodies: int):
       - contact_forces: (num_envs, num_bodies, 3)
       - box_contact_force: (num_envs, 3)
     """
-    # get_links_net_contact_force returns list of tensors per link
-    all_forces = [link.get_net_contact_force() for link in entity.links]
-    # Stack into (n_links, num_envs, 3)
-    stacked = torch.stack(all_forces, dim=1)
-    # split—assuming the last link is your box
-    contact_forces = stacked[:num_envs, :num_bodies, :]
-    box_contact_force = stacked[:num_envs, num_bodies, :]
+    # Get all contact forces for all links in the entity
+    all_forces = entity.get_links_net_contact_force()  # Shape: (num_envs, n_links, 3) or (n_links, 3)
+    
+    # Convert to PyTorch tensor if needed
+    if not isinstance(all_forces, torch.Tensor):
+        all_forces = torch.tensor(all_forces, dtype=torch.float32)
+    
+    # Handle single environment case
+    if all_forces.dim() == 2:  # (n_links, 3)
+        all_forces = all_forces.unsqueeze(0)  # Add batch dimension: (1, n_links, 3)
+    
+    # Split forces - assuming the last link is the box
+    contact_forces = all_forces[:num_envs, :num_bodies, :]  # (num_envs, num_bodies, 3)
+    box_contact_force = all_forces[:num_envs, num_bodies, :]  # (num_envs, 3)
+    
     return contact_forces, box_contact_force
 
 def gs_get_rigid_body_states(entity: RigidEntity, num_envs: int, num_bodies: int, feet_indices, gripper_idx):
