@@ -38,6 +38,11 @@ from legged_gym.envs.go2.go2_rough.go2_rough_config import GO2RoughCfg, GO2Rough
 # go2_deploy
 from legged_gym.envs.go2.go2_deploy.go2_deploy import GO2Deploy
 from legged_gym.envs.go2.go2_deploy.go2_deploy_config import GO2DeployCfg, GO2DeployCfgPPO
+
+#b1
+from legged_gym.envs.b1.b1 import B1
+from legged_gym.envs.b1.b1_config import B1Cfg, B1CfgPPO
+
 # bipedal_walker
 from legged_gym.envs.bipedal_walker.bipedal_walker_config import BipedalWalkerCfg, BipedalWalkerCfgPPO
 from legged_gym.envs.bipedal_walker.bipedal_walker import BipedalWalker
@@ -51,4 +56,5 @@ task_registry.register( "go2", GO2, GO2Cfg(), GO2CfgPPO())
 task_registry.register( "go2_rough", GO2, GO2RoughCfg(), GO2RoughCfgPPO())
 task_registry.register( "go2_deploy", GO2Deploy, GO2DeployCfg(), GO2DeployCfgPPO())
 task_registry.register( "bipedal_walker", BipedalWalker, BipedalWalkerCfg(), BipedalWalkerCfgPPO())
+task_registry.register( "b1", B1, B1Cfg(), B1CfgPPO())
 task_registry.register( "b1z1", ManipLoco, B1Z1RoughCfg(), B1Z1RoughCfgPPO())

@@ -19,6 +19,16 @@ from legged_gym.utils.helpers import class_to_dict
 from legged_gym.utils.gs_utils import *
 from .legged_robot_config import LeggedRobotCfg
 
+import sys
+import traceback
+
+class TracePrints(object):
+  def __init__(self):    
+    self.stdout = sys.stdout
+  def write(self, s):
+    self.stdout.write("Writing %r\n" % s)
+    traceback.print_stack(file=self.stdout)
+
 class LeggedRobot(BaseTask):
     def __init__(self, cfg: LeggedRobotCfg, sim_device, headless):
         """ Parses the provided config file,
@@ -70,11 +80,10 @@ class LeggedRobot(BaseTask):
 
         # return clipped obs, clipped states (None), rewards, dones and infos
         clip_obs = self.cfg.normalization.clip_observations
-        self.obs_buf = torch.clip(self.obs_buf, -clip_obs, clip_obs)
+        self.obs_buf = torch.clip(torch.nan_to_num(self.obs_buf), -clip_obs, clip_obs)
         if self.privileged_obs_buf is not None:
             self.privileged_obs_buf = torch.clip(self.privileged_obs_buf, -clip_obs, clip_obs)
-        print(f"LOL2:{self.obs_buf.shape}")
-        return self.obs_buf, self.privileged_obs_buf, self.rew_buf, self.reset_buf, self.extras
+        return self.obs_buf, self.privileged_obs_buf, torch.nan_to_num(self.rew_buf), torch.nan_to_num(self.reset_buf), self.extras
 
     def post_physics_step(self):
         """ check terminations, compute observations and rewards
