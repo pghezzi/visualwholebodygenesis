@@ -35,7 +35,6 @@ import os
 import genesis as gs
 
 from legged_gym.utils.gs_utils import *
-from ti.math.vec3 import Vec3
 
 #fix this
 #from isaacgym import gymtorch, gymapi, gymutil
@@ -710,11 +709,10 @@ class ManipLoco(LeggedRobot):
     def _init_buffers(self):
         """ Initial size torch tensors which will contain simulation states and processed quantities
         """
-        
         # Initialize gripper index
-        self.gripper_idx = self.robot.get_link_idx(self.cfg.asset.gripper_name)-1  # -1 since link indices start from 1
+        self.gripper_idx = self.robot.get_link(self.cfg.asset.gripper_name).idx_local - 1  # -1 since link indices start from 1
         self.num_dofs = len(self.motor_dofs)
-        self.num_bodies = len(self.robot.links)-1 # -1 for base link
+        self.num_bodies = len(self.robot.links) - 1 # -1 for base link
         self.up_axis_idx = 2 # 2 for z, 1 for y -> adapt gravity accordingly
         self.action_scale = torch.tensor(self.cfg.control.action_scale, device=self.device)
 

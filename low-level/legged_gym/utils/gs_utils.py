@@ -1,9 +1,15 @@
 import numpy as np
 import torch
-import ti.math.vec3 as Vec3
+import taichi as ti
 import genesis as gs
 import torch
 from typing import List
+from genesis.engine.scene import Scene
+from genesis.engine.entities.rigid_entity.rigid_entity import RigidEntity
+from genesis.engine.entities.hybrid_entity import HybridEntity
+
+
+Vec3 = ti.math.vec3
 
 
 def wrap_to_pi(angles):
@@ -17,7 +23,7 @@ def torch_wrap_to_pi_minuspi(theta):
     return (theta + np.pi) % (2 * np.pi) - np.pi
 
 
-def gs_get_dof_state(entity: gs.HybridEntity, num_envs: int, num_dofs: int, num_gripper_joints: int):
+def gs_get_dof_state(entity: HybridEntity, num_envs: int, num_dofs: int, num_gripper_joints: int):
     """
     Replaces Gym's DOF state capture.
     
@@ -33,14 +39,13 @@ def gs_get_dof_state(entity: gs.HybridEntity, num_envs: int, num_dofs: int, num_
     # Optionally convert to PyTorch
     dof_pos = torch.tensor(pos, dtype=torch.float32)
     dof_vel = torch.tensor(vel, dtype=torch.float32)
-
-    dof_pos_wo_gripper = dof_pos[:, :-num_gripper_joints]
-    dof_vel_wo_gripper = dof_vel[:, :-num_gripper_joints]
+    dof_pos_wo_gripper = dof_pos[:num_envs, :-num_gripper_joints]
+    dof_vel_wo_gripper = dof_vel[:num_envs, :-num_gripper_joints]
 
     return dof_pos, dof_vel, dof_pos_wo_gripper, dof_vel_wo_gripper
 
 
-def gs_get_root_states(sim: gs.Simulator, num_envs: int):
+def gs_get_root_states(sim: Scene, num_envs: int):
     """
     Retrieves actor states from a Genesis Simulator and returns:
       - root_states: (num_envs, 13) for actor 0
@@ -48,7 +53,8 @@ def gs_get_root_states(sim: gs.Simulator, num_envs: int):
 
     Assumes sim.get_state().root returns a tensor of shape (num_envs, 2, 13)
     """
-    state = sim.get_state()  # snapshot of all actors
+    state: gs.SimState = sim.get_state()  # snapshot of all actors
+    print(sim.entities)
     # Expecting shape [num_envs, 2, 13] for two actors per env
     root_states_all = state.root  # or state.pos concatenated with vel/quaternion
     assert root_states_all.shape == (num_envs, 2, 13), \
@@ -59,7 +65,7 @@ def gs_get_root_states(sim: gs.Simulator, num_envs: int):
     return root_states, box_root_state
 
 
-def gs_get_contact_forces(entity: gs.RigidEntity, num_envs: int, num_bodies: int):
+def gs_get_contact_forces(entity: RigidEntity, num_envs: int, num_bodies: int):
     """
     Returns (contact_forces, box_contact_force): torch.FloatTensor
       - contact_forces: (num_envs, num_bodies, 3)
@@ -70,11 +76,11 @@ def gs_get_contact_forces(entity: gs.RigidEntity, num_envs: int, num_bodies: int
     # Stack into (n_links, num_envs, 3)
     stacked = torch.stack(all_forces, dim=1)
     # split—assuming the last link is your box
-    contact_forces = stacked[:, :num_bodies, :]
-    box_contact_force = stacked[:, num_bodies, :]
+    contact_forces = stacked[:num_envs, :num_bodies, :]
+    box_contact_force = stacked[:num_envs, num_bodies, :]
     return contact_forces, box_contact_force
 
-def gs_get_rigid_body_states(entity: gs.RigidEntity, num_envs: int, num_bodies: int, feet_indices, gripper_idx):
+def gs_get_rigid_body_states(entity: RigidEntity, num_envs: int, num_bodies: int, feet_indices, gripper_idx):
     """
     Returns:
       - rigid_body_state: (num_envs, num_bodies + 1, 13)
@@ -90,14 +96,14 @@ def gs_get_rigid_body_states(entity: gs.RigidEntity, num_envs: int, num_bodies: 
     body_state = torch.cat([pos, orn, vel], dim=-1)  # shape (num_envs, n_links, 13)
 
     rigid_body_state = body_state
-    foot_velocities = body_state[:, feet_indices, 7:10]
-    foot_positions = body_state[:, feet_indices, 0:3]
-    ee_pos = body_state[:, gripper_idx, 0:3]
-    ee_orn = body_state[:, gripper_idx, 3:7]
-    ee_vel = body_state[:, gripper_idx, 7:]
+    foot_velocities = body_state[:num_envs, feet_indices, 7:10]
+    foot_positions = body_state[:num_envs, feet_indices, 0:3]
+    ee_pos = body_state[:num_envs, gripper_idx, 0:3]
+    ee_orn = body_state[:num_envs, gripper_idx, 3:7]
+    ee_vel = body_state[:num_envs, gripper_idx, 7:]
     return rigid_body_state, foot_velocities, foot_positions, ee_pos, ee_orn, ee_vel
 
-def gs_get_jacobian(entity: gs.RigidEntity, gripper_idx: int, num_gripper_joints: int):
+def gs_get_jacobian(entity: RigidEntity, gripper_idx: int, num_gripper_joints: int):
     """
     Returns: ee_j_eef (jacobian at end-effector)
       shape: (num_envs, end_dim, num_active_dofs)
@@ -108,7 +114,7 @@ def gs_get_jacobian(entity: gs.RigidEntity, gripper_idx: int, num_gripper_joints
     ee_j_eef = J_full[:, :6, -(6 + num_gripper_joints):-num_gripper_joints]
     return ee_j_eef
 
-def gs_get_force_sensors(sensor_entities: List[gs.RigidEntity], num_envs: int):
+def gs_get_force_sensors(sensor_entities: List[RigidEntity], num_envs: int):
     """
     Returns a stacked tensor of size (num_envs, n_sensors, 6)
     """

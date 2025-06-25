@@ -187,7 +187,7 @@ class B1Z1RoughCfg( LeggedRobotCfg ):
             'z1_Gripper'
         ]
         foot_name = "foot"
-        gripper_name = "ee_gripper_link" #"gripperMover"
+        gripper_name = "gripperMover" #"gripperMover"
         penalize_contacts_on = ["thigh", "trunk", "calf"]
         terminate_after_contacts_on = ["base"]
         self_collisions = 0 # 1 to disable, 0 to enable...bitwise filter
