@@ -169,12 +169,19 @@ class ManipLoco(LeggedRobot):
         self.last_root_vel[:] = self.root_states[:, 7:13]
         self.last_torques[:] = self.torques[:]
         
-        # Avinash - change this into genesis
-        # if (self.viewer and self.enable_viewer_sync and self.debug_viz) or self.record_video:
-        #     self.gym.clear_lines(self.viewer)
-        #     self._draw_ee_goal_curr()
-        #     self._draw_ee_goal_traj()
-        #     self._draw_collision_bbox()
+        # self.enable_viewer_sync = True
+        # Avinash - change this into- check enable viewer sync 
+        if (self.scene.visualizer.viewer and self.enable_viewer_sync and self.debug_viz) or self.record_video:
+            # Clear previous debug objects
+            self.scene.visualizer.context.clear_debug_objects()
+            
+            # Draw debug visualizations
+            self._draw_ee_goal_curr()
+            self._draw_ee_goal_traj()
+            self._draw_collision_bbox()
+            
+            # Update the visualizer
+            self.scene.visualizer.update()
     
     def compute_reward(self):
         """ Compute rewards
@@ -1102,63 +1109,89 @@ class ManipLoco(LeggedRobot):
         bbox0 = center + self.collision_upper_limits
         bbox1 = center + self.collision_lower_limits
         bboxes = torch.stack([bbox0, bbox1], dim=1)
-        sphere_geom = gymutil.WireframeSphereGeometry(0.05, 4, 4, None, color=(1, 1, 0))
+        # sphere_geom = gymutil.WireframeSphereGeometry(0.05, 4, 4, None, color=(1, 1, 0))
 
         for i in range(self.num_envs):
-            bbox_geom = gymutil.WireframeBBoxGeometry(bboxes[i], None, color=(1, 0, 0))
+            # bbox_geom = gymutil.WireframeBBoxGeometry(bboxes[i], None, color=(1, 0, 0))
+            # Use Genesis's draw_debug_box with wireframe=True
+            bounds = torch.stack([bboxes[i, 0], bboxes[i, 1]], dim=0)  # [2, 3] tensor
             quat = self.base_yaw_quat[i]
-            r = gymapi.Quat(quat[0], quat[1], quat[2], quat[3])
-            pose0 = gymapi.Transform(Vec3(self.root_states[i, 0], self.root_states[i, 1], 0), r=r)
-            gymutil.draw_lines(bbox_geom, self.gym, self.viewer, self.envs[i], pose=pose0) 
+            pos = torch.tensor([self.root_states[i, 0], self.root_states[i, 1], 0])
+            
+            # Create transform matrix
+            T = gs.trans_quat_to_T(pos, quat)
+            
+            # Draw wireframe bounding box
+            self.scene.visualizer.context.draw_debug_box(
+                bounds=bounds,
+                color=(1.0, 0.0, 0.0, 1.0),  # Red color
+                wireframe=True,
+                wireframe_radius=0.002
+            )
 
     #TODO PORT
     def _draw_ee_goal_curr(self):
-        """ Draws visualizations for dubugging (slows down simulation a lot).
-            Default behaviour: draws height measurement points
-        """
-        sphere_geom = gymutil.WireframeSphereGeometry(0.05, 4, 4, None, color=(1, 1, 0))
-
-        sphere_geom_3 = gymutil.WireframeSphereGeometry(0.05, 16, 16, None, color=(0, 1, 1))
-        upper_arm_pose = self._get_ee_goal_spherical_center()
-
-        sphere_geom_2 = gymutil.WireframeSphereGeometry(0.05, 4, 4, None, color=(0, 0, 1))
-        ee_pose = self.rigid_body_state[:, self.gripper_idx, :3]
-
-        sphere_geom_origin = gymutil.WireframeSphereGeometry(0.1, 8, 8, None, color=(0, 1, 0))
-        sphere_pose = gymapi.Transform(Vec3(0, 0, 0), r=None)
-        gymutil.draw_lines(sphere_geom_origin, self.gym, self.viewer, self.envs[0], sphere_pose)
-
-        axes_geom = gymutil.AxesGeometry(scale=0.2)
-
+        # Draw current EE goal position (yellow sphere)
         for i in range(self.num_envs):
-            sphere_pose = gymapi.Transform(Vec3(self.curr_ee_goal_cart_world[i, 0], self.curr_ee_goal_cart_world[i, 1], self.curr_ee_goal_cart_world[i, 2]), r=None)
-            gymutil.draw_lines(sphere_geom, self.gym, self.viewer, self.envs[i], sphere_pose) 
+            pos = self.curr_ee_goal_cart_world[i]
+            self.scene.visualizer.context.draw_debug_sphere(
+                pos=pos,
+                radius=0.05,
+                color=(1.0, 1.0, 0.0, 1.0),  # Yellow
+                persistent=False
+            )
             
-            sphere_pose_2 = gymapi.Transform(Vec3(ee_pose[i, 0], ee_pose[i, 1], ee_pose[i, 2]), r=None)
-            gymutil.draw_lines(sphere_geom_2, self.gym, self.viewer, self.envs[i], sphere_pose_2) 
-
-            sphere_pose_3 = gymapi.Transform(Vec3(upper_arm_pose[i, 0], upper_arm_pose[i, 1], upper_arm_pose[i, 2]), r=None)
-            gymutil.draw_lines(sphere_geom_3, self.gym, self.viewer, self.envs[i], sphere_pose_3) 
-
-            pose = gymapi.Transform(Vec3(self.curr_ee_goal_cart_world[i, 0], self.curr_ee_goal_cart_world[i, 1], self.curr_ee_goal_cart_world[i, 2]), 
-                                    r=gymapi.Quat(self.ee_goal_orn_quat[i, 0], self.ee_goal_orn_quat[i, 1], self.ee_goal_orn_quat[i, 2], self.ee_goal_orn_quat[i, 3]))
-            gymutil.draw_lines(axes_geom, self.gym, self.viewer, self.envs[i], pose)
+            # Draw current EE position (blue sphere)
+            ee_pos = self.rigid_body_state[i, self.gripper_idx, :3]
+            self.scene.visualizer.context.draw_debug_sphere(
+                pos=ee_pos,
+                radius=0.05,
+                color=(0.0, 0.0, 1.0, 1.0),  # Blue
+                persistent=False
+            )
+            
+            # Draw arm base position (cyan sphere)
+            upper_arm_pose = self._get_ee_goal_spherical_center()[i]
+            self.scene.visualizer.context.draw_debug_sphere(
+                pos=upper_arm_pose,
+                radius=0.05,
+                color=(0.0, 1.0, 1.0, 1.0),  # Cyan
+                persistent=False
+            )
+            
+            # Draw coordinate frame at EE goal
+            quat = self.ee_goal_orn_quat[i]
+            pos = self.curr_ee_goal_cart_world[i]
+            T = gs.trans_quat_to_T(pos, quat)
+            self.scene.visualizer.context.draw_debug_frame(
+                T=T,
+                axis_length=0.2,
+                origin_size=0.015,
+                axis_radius=0.01
+            )
 
     def _draw_ee_goal_traj(self):
-        sphere_geom = gymutil.WireframeSphereGeometry(0.005, 8, 8, None, color=(1, 0, 0))
-        sphere_geom_yellow = gymutil.WireframeSphereGeometry(0.01, 16, 16, None, color=(1, 1, 0))
+        # sphere_geom = gymutil.WireframeSphereGeometry(0.005, 8, 8, None, color=(1, 0, 0))
+        # sphere_geom_yellow = gymutil.WireframeSphereGeometry(0.01, 16, 16, None, color=(1, 1, 0))
 
         t = torch.linspace(0, 1, 10, device=self.device)[None, None, None, :]
         ee_target_all_sphere = torch.lerp(self.ee_start_sphere[..., None], self.ee_goal_sphere[..., None], t).squeeze(0)
         ee_target_all_cart_world = torch.zeros_like(ee_target_all_sphere)
+        
         for i in range(10):
             ee_target_cart = gs_sphere2cart(ee_target_all_sphere[..., i])
             ee_target_all_cart_world[..., i] = gs_quat_apply(self.base_yaw_quat, ee_target_cart)
         ee_target_all_cart_world += self._get_ee_goal_spherical_center()[:, :, None]
+        
         for i in range(self.num_envs):
             for j in range(10):
-                pose = gymapi.Transform(Vec3(ee_target_all_cart_world[i, 0, j], ee_target_all_cart_world[i, 1, j], ee_target_all_cart_world[i, 2, j]), r=None)
-                gymutil.draw_lines(sphere_geom, self.gym, self.viewer, self.envs[i], pose)
+                pos = ee_target_all_cart_world[i, :, j]
+                self.scene.visualizer.context.draw_debug_sphere(
+                    pos=pos,
+                    radius=0.005,
+                    color=(1.0, 0.0, 0.0, 1.0),  # Red
+                    persistent=False
+                )
 
     def _control_ik(self, dpose):
         # solve damped least squares
