@@ -63,6 +63,13 @@ def gs_get_root_states(sim: Scene, num_envs: int):
     robot_entity = entities[0]  # First entity is the robot
     box_entity = entities[1]    # Second entity is the box
     
+
+    # # Convert Genesis tensors to PyTorch tensors
+    # robot_pos_torch = torch.tensor(robot_pos, dtype=torch.float32)
+    # robot_quat_torch = torch.tensor(robot_quat, dtype=torch.float32)
+    # robot_lin_vel_torch = torch.tensor(robot_lin_vel, dtype=torch.float32)
+    # robot_ang_vel_torch = torch.tensor(robot_ang_vel, dtype=torch.float32)
+    
     # Get robot root state: position (3) + quaternion (4) + linear velocity (3) + angular velocity (3) = 13
     robot_pos = robot_entity.get_pos()  # (num_envs, 3)
     robot_quat = robot_entity.get_quat()  # (num_envs, 4)
@@ -90,13 +97,21 @@ def gs_get_contact_forces(entity: RigidEntity, num_envs: int, num_bodies: int):
       - contact_forces: (num_envs, num_bodies, 3)
       - box_contact_force: (num_envs, 3)
     """
-    # get_links_net_contact_force returns list of tensors per link
-    all_forces = [link.get_net_contact_force() for link in entity.links]
-    # Stack into (n_links, num_envs, 3)
-    stacked = torch.stack(all_forces, dim=1)
-    # split—assuming the last link is your box
-    contact_forces = stacked[:num_envs, :num_bodies, :]
-    box_contact_force = stacked[:num_envs, num_bodies, :]
+    # Get all contact forces for all links in the entity
+    all_forces = entity.get_links_net_contact_force()  # Shape: (num_envs, n_links, 3) or (n_links, 3)
+    
+    # Convert to PyTorch tensor if needed
+    if not isinstance(all_forces, torch.Tensor):
+        all_forces = torch.tensor(all_forces, dtype=torch.float32)
+    
+    # Handle single environment case
+    if all_forces.dim() == 2:  # (n_links, 3)
+        all_forces = all_forces.unsqueeze(0)  # Add batch dimension: (1, n_links, 3)
+    
+    # Split forces - assuming the last link is the box
+    contact_forces = all_forces[:num_envs, :num_bodies, :]  # (num_envs, num_bodies, 3)
+    box_contact_force = all_forces[:num_envs, num_bodies, :]  # (num_envs, 3)
+    
     return contact_forces, box_contact_force
 
 def gs_get_rigid_body_states(entity: RigidEntity, num_envs: int, num_bodies: int, feet_indices, gripper_idx):
