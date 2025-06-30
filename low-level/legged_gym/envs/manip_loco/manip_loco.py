@@ -780,8 +780,16 @@ class ManipLoco(LeggedRobot):
         return torch.stack(tuple(self.robot.get_jacobian(link) for link in self.robot.links), dim=1)
 
     def get_force_sensor_tensor(self):
-        #TODO: Figure this out... somehow
-        return self.gym.acquire_force_sensor_tensor(self.sim)
+        # Use Genesis contact force detection
+        # Get contact forces at foot positions
+        foot_contact_forces = []
+        for foot_idx in self.feet_indices:
+            # Get contact forces at foot link
+            contact_force = self.robot.get_links_net_contact_force(links_idx_local=[foot_idx])
+            foot_contact_forces.append(contact_force)
+        
+        # Stack all foot contact forces
+        return torch.stack(foot_contact_forces, dim=1)  # Shape: (num_envs, 4, 3)
 
     def _init_buffers(self):
         """ Initialize torch tensors which will contain simulation states and processed quantities
