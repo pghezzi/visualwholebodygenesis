@@ -11,6 +11,16 @@ from genesis.engine.entities.hybrid_entity import HybridEntity
 
 Vec3 = ti.math.vec3
 
+def get_axis_params(value, axis_idx, x_value=0., dtype=float, n_dims=3):
+    """construct arguments to `Vec` according to axis index.
+    """
+    zs = np.zeros((n_dims,))
+    assert axis_idx < n_dims, "the axis dim should be within the vector dimensions"
+    zs[axis_idx] = 1.
+    params = np.where(zs == 1., value, zs)
+    params[0] = x_value
+    return list(params.astype(dtype))
+
 
 def wrap_to_pi(angles):
     angles %= 2 * np.pi

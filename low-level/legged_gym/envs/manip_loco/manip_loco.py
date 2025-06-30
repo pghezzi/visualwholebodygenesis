@@ -441,6 +441,8 @@ class ManipLoco(LeggedRobot):
                 2.3 create actor with these properties and add them to the env
              3. Store indices of different bodies of the robot
         """
+
+        self.up_axis_idx = 2
         asset_path = self.cfg.asset.file.format(LEGGED_GYM_ROOT_DIR=LEGGED_GYM_ROOT_DIR)
         asset_root = os.path.dirname(asset_path)
         asset_file = os.path.basename(asset_path)
@@ -492,14 +494,17 @@ class ManipLoco(LeggedRobot):
         self.motor_dofs = [self.robot.get_joint(name).dof_idx_local for name in self.dof_names]
         self.body_names = [link.name for link in self.robot.links]
         self.body_names_to_idx = {link.name : link.idx_local for link in self.robot.links}
-        self.dof_names = [joint.name for joint in self.robot.joints]
+        self.dof_names = [joint.name for joint in self.robot.joints for _ in range(joint.n_dofs)]
+        print()
         self.dof_wo_gripper_names = self.dof_names[:-self.cfg.env.num_gripper_joints]
         self.dof_names_to_idx = {joint.name : joint.idx_local for joint in self.robot.joints}
         print( self.dof_names_to_idx)
         # self.num_bodies = len(self.body_names)
         # self.num_dofs = len(self.dof_names)
-        feet_names = [s for s in self.body_names if self.cfg.asset.foot_name in s]
+        #feet_names = [s for s in self.body_names if self.cfg.asset.foot_name in s]
+        feet_names = ["FR_calf", "FL_calf", "RR_calf", "RL_calf"]
         penalized_contact_names = []
+        print(self.dof_names)
         for name in self.cfg.asset.penalize_contacts_on:
             body_names = [s for s in self.body_names if name in s]
             if len(body_names) == 0:
@@ -512,16 +517,8 @@ class ManipLoco(LeggedRobot):
                 raise Exception('No body found with name {}'.format(name))
             termination_contact_names.extend(body_names)
         
-        #####################@ PORT @################################################### 
-        self.sensor_indices = []
-        for name in feet_names:
-            foot_idx = self.body_names_to_idx[name]
-            sensor_pose = Vec3(0.0, 0.0, -0.05)
-            sensor_idx = self.gym.create_asset_force_sensor(robot_asset, foot_idx, sensor_pose)
-            self.sensor_indices.append(sensor_idx)
-        
+        self.sensor_links = [self.dof_names_to_idx[name] for name in ["FR_calf_joint", "FL_calf_joint", "RR_calf_joint", "RL_calf_joint"]]
         self.gripper_idx = self.body_names_to_idx[self.cfg.asset.gripper_name]
-        ###############################################################################
 
         # box
         #asset_options = gymapi.AssetOptions()
@@ -642,19 +639,18 @@ class ManipLoco(LeggedRobot):
         self.hip_indices = torch.zeros(len(hip_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i, name in enumerate(hip_names):
             self.hip_indices[i] = self.dof_names.index(name)
-        print(feet_names, penalized_contact_names, termination_contact_names)
-        print(self.robot.links)
+                
         self.feet_indices = torch.zeros(len(feet_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i, name in enumerate(feet_names):
-            self.feet_indices[i] = self.robot.get_link(name).idx
+            self.feet_indices[i] = self.body_names_to_idx[name]
 
         self.penalized_contact_indices = torch.zeros(len(penalized_contact_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i, name in enumerate(penalized_contact_names):
-            self.penalized_contact_indices[i] = self.robot.get_link(name).idx
+            self.penalized_contact_indices[i] = self.body_names_to_idx[name]
 
         self.termination_contact_indices = torch.zeros(len(termination_contact_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i, name in enumerate(termination_contact_names):
-            self.termination_contact_indices[i] = self.robot.get_link(name).idx
+            self.termination_contact_indices[i] = self.body_names_to_idx[name]
         
         print('penalized_contact_indices: {}'.format(self.penalized_contact_indices))
         print('termination_contact_indices: {}'.format(self.termination_contact_indices))
@@ -740,27 +736,35 @@ class ManipLoco(LeggedRobot):
         
         return props
     
+    def print_return(self, x):
+        print(x)
+        return x
+    
     def get_root_state(self):
         # replace with box
-        return torch.cat((torch.cat(
+        robot = torch.cat(
             (self.robot.get_pos(), self.robot.get_quat(), self.robot.get_vel(), self.robot.get_ang()),
             dim=1
-        ), torch.cat(
+        )
+        box = torch.cat(
             (self.box.get_pos(), self.box.get_quat(), self.box.get_vel(), self.box.get_ang()),
             dim=1
-        )),dim=0)
+        )
+        return torch.stack([robot, box], dim=1)
     
     def get_dof_state(self):
-        return torch.cat(
-            (self.robot.get_dofs_position(self.motor_dofs), self.robot.get_dofs_velocity(self.motor_dofs)), 
-            dim=1
+        t = torch.stack(
+            (self.robot.get_dofs_position(), self.robot.get_dofs_velocity()), 
+            dim=2
         )
+        print("HELLO", t.shape)
+        return t
     
     def get_net_contact_forces(self):
         # replace with box
         robot = self.robot.get_links_net_contact_force()
         box = self.box.get_links_net_contact_force()
-        print(f'r.shape, b.shape():{robot.shape}, {box.shape}')
+        #print(f'r.shape, b.shape():{robot.shape}, {box.shape}')
         return torch.cat(
             (robot, box),dim=1
         )
@@ -779,18 +783,15 @@ class ManipLoco(LeggedRobot):
     def get_jacobian_tensor(self):
         return torch.stack(tuple(self.robot.get_jacobian(link) for link in self.robot.links), dim=1)
 
+    
+    #for each sensor, the first three floats are the force and the last three floats are the torque.
     def get_force_sensor_tensor(self):
         # Use Genesis contact force detection
         # Get contact forces at foot positions
-        foot_contact_forces = []
-        for foot_idx in self.feet_indices:
-            # Get contact forces at foot link
-            contact_force = self.robot.get_links_net_contact_force(links_idx_local=[foot_idx])
-            foot_contact_forces.append(contact_force)
-        
-        # Stack all foot contact forces
-        return torch.stack(foot_contact_forces, dim=1)  # Shape: (num_envs, 4, 3)
-
+        a = self.robot.get_dofs_force(self.sensor_links)
+        print(a)
+        return a
+     
     def _init_buffers(self):
         """ Initialize torch tensors which will contain simulation states and processed quantities
         """
@@ -812,7 +813,7 @@ class ManipLoco(LeggedRobot):
         #self.gym.refresh_force_sensor_tensor(self.sim)
 
         # create some wrapper tensors for different slices
-        self.force_sensor_tensor = force_sensor_tensor.view(self.num_envs, 4, 6)
+        self.force_sensor_tensor = force_sensor_tensor.view(self.num_envs, 4)
         
         #self._root_states = gymtorch.wrap_tensor(actor_root_state).view(self.num_envs, 2, 13) # 2 actors
         #self.root_states = self._root_states[:, 0, :]
@@ -823,6 +824,7 @@ class ManipLoco(LeggedRobot):
         self.box_root_state = self._root_states[:, 1, :]
 
         self.dof_state = dof_state_tensor
+        print(self.dof_state.shape)
         self.dof_pos = self.dof_state.view(self.num_envs, self.num_dofs, 2)[..., 0]
         self.dof_pos_wo_gripper = self.dof_pos[:, :-self.cfg.env.num_gripper_joints]
         self.dof_vel = self.dof_state.view(self.num_envs, self.num_dofs, 2)[..., 1]
@@ -953,8 +955,10 @@ class ManipLoco(LeggedRobot):
         # joint positions offsets and PD gains
         self.default_dof_pos = torch.zeros(self.num_dofs, dtype=torch.float, device=self.device, requires_grad=False)
         for i in range(self.num_dofs):
+            print(i)
+            print(self.dof_names)
             name = self.dof_names[i]
-            angle = self.cfg.init_state.default_joint_angles[name]
+            angle = self.cfg.init_state.default_joint_angles.get(name, 0.0)
             self.default_dof_pos[i] = angle
         
         for i in range(self.num_torques):
@@ -962,8 +966,8 @@ class ManipLoco(LeggedRobot):
             found = False
             for dof_name in self.cfg.control.stiffness.keys():
                 if dof_name in name:
-                    self.p_gains[i] = self.cfg.control.stiffness[dof_name]
-                    self.d_gains[i] = self.cfg.control.damping[dof_name]
+                    self.p_gains[i] = self.cfg.control.stiffness.get(dof_name, 0.0)
+                    self.d_gains[i] = self.cfg.control.damping.get(dof_name)
                     found = True
             if not found:
                 self.p_gains[i] = 0.
