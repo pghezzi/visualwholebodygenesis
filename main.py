@@ -24,11 +24,15 @@ plane = scene.add_entity(gs.morphs.Plane())
 
 b1z1 = scene.add_entity(gs.morphs.URDF(file="/home/lily-hcrlab/visualwholebodygenesis/low-level/resources/robots/b1/urdf/b1.urdf"))
 
+box = scene.add_entity(gs.morphs.Box( size=(1,1,1)))
+
+#print(scene.entities)
+
 ########################## build ##########################
 
 # create 20 parallel environments
 B = 20
-scene.build(n_envs=4, env_spacing=(1.0, 1.0))
+scene.build(n_envs=20, env_spacing=(10.0, 10.0))
 
 for i in range(1000):
     scene.step()

@@ -98,10 +98,10 @@ class LeggedRobot(BaseTask):
         self.base_quat[:] = self.robot.get_quat()
         base_quat_rel = gs_quat_mul(self.base_quat, gs_inv_quat(self.base_init_quat.reshape(1, -1).repeat(self.num_envs, 1)))
         self.base_euler = gs_quat2euler(base_quat_rel)
-        inv_base_quat = inv_quat(self.base_quat)
-        self.base_lin_vel[:] = transform_by_quat(self.robot.get_vel(), inv_base_quat) # trasform to base frame
-        self.base_ang_vel[:] = transform_by_quat(self.robot.get_ang(), inv_base_quat)
-        self.projected_gravity = transform_by_quat(self.global_gravity, inv_base_quat)
+        inv_base_quat = gs_inv_quat(self.base_quat)
+        self.base_lin_vel[:] = gs_transform_by_quat(self.robot.get_vel(), inv_base_quat) # trasform to base frame
+        self.base_ang_vel[:] = gs_transform_by_quat(self.robot.get_ang(), inv_base_quat)
+        self.projected_gravity = gs_transform_by_quat(self.global_gravity, inv_base_quat)
         self.dof_pos[:] = self.robot.get_dofs_position(self.motor_dofs)
         self.dof_vel[:] = self.robot.get_dofs_velocity(self.motor_dofs)
         self.link_contact_forces[:] = torch.tensor(
