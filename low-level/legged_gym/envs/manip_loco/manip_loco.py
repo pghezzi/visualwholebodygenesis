@@ -95,12 +95,10 @@ class ManipLoco(LeggedRobot):
 
         for _ in range(self.cfg.control.decimation):
             self.torques = self._compute_torques(self.actions)
-            # to port
-            self.gym.set_dof_position_target_tensor(self.sim, all_pos_targets)
-            self.gym.set_dof_actuation_force_tensor(self.sim, self.torques)
-            self.gym.simulate(self.sim)
-            if self.device == 'cpu':
-                self.gym.fetch_results(self.sim, True)
+            # Genesis equivalent:
+            self.robot.control_dofs_position(all_pos_targets)
+            self.robot.control_dofs_force(self.torques)
+            self.scene.step()  # or however you step the Genesis scene
             self._root_states[:] = self.get_root_state()
             self.dof_state[:] = self.get_dof_state()
             self.jacobian_whole[:] = self.get_jacobian_tensor()
