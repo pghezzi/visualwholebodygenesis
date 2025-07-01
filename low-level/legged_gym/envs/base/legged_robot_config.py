@@ -77,7 +77,6 @@ class LeggedRobotCfg(BaseConfig):
         foot_name = "None"     # name of the feet bodies, used to index body state and contact force tensors
         penalize_contacts_on = []
         terminate_after_contacts_on = []
-        links_to_keep = []
         self_collisions = True   # enable self collisions by default
         fix_base_link = False    # fix base link to the world
         

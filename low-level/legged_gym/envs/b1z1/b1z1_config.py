@@ -359,15 +359,15 @@ class B1Z1RoughCfgPPO(LeggedRobotCfgPPO):
         lam = 0.95
         desired_kl = None
         max_grad_norm = 1.
-        min_policy_std = [[0.15, 0.25, 0.25] * 4 + [0.2] * 3 + [0.05] * 3]
-
-        mixing_schedule=[1.0, 0, 3000] #if not RESUME else [1.0, 0, 1]
-        torque_supervision = B1Z1RoughCfg.control.torque_supervision  #alert: also appears above
-        torque_supervision_schedule=[0.0, 1000, 1000]
-        adaptive_arm_gains = B1Z1RoughCfg.control.adaptive_arm_gains
+        
+        #min_policy_std = [[0.15, 0.25, 0.25] * 4 + [0.2] * 3 + [0.05] * 3]
+        #mixing_schedule=[1.0, 0, 3000] #if not RESUME else [1.0, 0, 1]
+        #torque_supervision = B1Z1RoughCfg.control.torque_supervision  #alert: also appears above
+        #torque_supervision_schedule=[0.0, 1000, 1000]
+        #adaptive_arm_gains = B1Z1RoughCfg.control.adaptive_arm_gains
         # dagger params
-        dagger_update_freq = 20
-        priv_reg_coef_schedual = [0, 0.1, 3000, 7000] #if not RESUME else [0, 1, 1000, 1000]
+        #dagger_update_freq = 20
+        #priv_reg_coef_schedual = [0, 0.1, 3000, 7000] #if not RESUME else [0, 1, 1000, 1000]
 
     class runner:
         policy_class_name = 'ActorCritic'

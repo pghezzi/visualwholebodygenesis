@@ -69,7 +69,7 @@ class ManipLoco(LeggedRobot):
         actions = self._reindex_all(actions)
         actions = torch.clip(actions, -self.clip_actions, self.clip_actions).to(self.device)
         # step physics and render each frame
-        self.render()
+        #self.render()
         if self.action_delay != -1:
             self.action_history_buf = torch.cat([self.action_history_buf[:, 1:], actions[:, None, :]], dim=1)
             # actions = self.action_history_buf[:, -self.action_delay - 1] # delay for 1/50=20ms
@@ -355,6 +355,24 @@ class ManipLoco(LeggedRobot):
         self.stop_update_goal = self.cfg.env.stop_update_goal
         self.record_video = self.cfg.env.record_video
 
+    def _reset_dofs(self, envs_idx):
+        """ Resets DOF position and velocities of selected environmments
+        Positions are randomly selected within 0.5:1.5 x default positions.
+        Velocities are set to zero.
+
+        Args:
+            env_ids (List[int]): Environemnt ids
+        """
+        self.dof_pos[envs_idx] = (self.default_dof_pos) * gs_rand_float(0.8, 1.2, (len(envs_idx), self.num_dofs), device=self.device)
+        
+        self.dof_vel[envs_idx] = 0.0
+        self.robot.set_dofs_position(
+            position=self.dof_pos[envs_idx],
+            zero_velocity=True,
+            envs_idx=envs_idx,
+        )
+        self.robot.zero_all_dofs_velocity(envs_idx)
+
     def _prepare_reward_function(self):
         """ Prepares a list of reward functions, whcih will be called to compute the total reward.
             Looks for self._reward_<REWARD_NAME>, where <REWARD_NAME> are names of all non zero reward scales in the cfg.
@@ -454,7 +472,7 @@ class ManipLoco(LeggedRobot):
         self.robot = self.scene.add_entity(
             gs.morphs.URDF(
                 file=os.path.join(asset_root, asset_file),
-                merge_fixed_links = True,
+                merge_fixed_links = False,
                 links_to_keep = self.cfg.asset.links_to_keep,
                 pos= np.array(self.cfg.init_state.pos),
                 quat=np.array(self.cfg.init_state.rot),
@@ -481,8 +499,8 @@ class ManipLoco(LeggedRobot):
         #robot_asset = self.gym.load_asset(self.sim, asset_root, asset_file, asset_options)
         #self.num_dofs = self.gym.get_asset_dof_count(robot_asset)
 
-        self.num_dofs = self.robot.n_dofs
-        self.num_bodies = self.robot.n_links
+        
+       
 
         #dof_props_asset = self.gym.get_asset_dof_properties(robot_asset)
         #dof_props_asset['driveMode'][12:].fill(gymapi.DOF_MODE_POS)  # set arm to pos control
@@ -492,19 +510,23 @@ class ManipLoco(LeggedRobot):
         #rigid_shape_props_asset = self.gym.get_asset_rigid_shape_properties(robot_asset)
         #self.body_names = self.gym.get_asset_rigid_body_names(robot_asset)
         self.motor_dofs = [self.robot.get_joint(name).dof_idx_local for name in self.dof_names]
-        self.body_names = [link.name for link in self.robot.links]
+        self.body_names = ['base', 'trunk', 'FL_hip', 'FL_thigh', 'FL_calf', 'FL_foot', 'FR_hip', 'FR_thigh', 'FR_calf', 'FR_foot', 'RL_hip', 'RL_thigh', 'RL_calf', 'RL_foot', 'RR_hip', 'RR_thigh', 'RR_calf', 'RR_foot', 'link01', 'link02', 'link03', 'link04', 'link05', 'link06', 'ee_gripper_link', 'gripperMover']
+        self.body_idx = [self.robot.get_link(name).idx_local for name in self.body_names]
         self.body_names_to_idx = {link.name : link.idx_local for link in self.robot.links}
-        self.dof_names = [joint.name for joint in self.robot.joints for _ in range(joint.n_dofs)]
-        print()
+        self.dof_names = ['FL_hip_joint', 'FL_thigh_joint', 'FL_calf_joint', 'FR_hip_joint', 'FR_thigh_joint', 'FR_calf_joint', 'RL_hip_joint', 'RL_thigh_joint', 'RL_calf_joint', 'RR_hip_joint', 'RR_thigh_joint', 'RR_calf_joint', 'z1_waist', 'z1_shoulder', 'z1_elbow', 'z1_wrist_angle', 'z1_forearm_roll', 'z1_wrist_rotate', 'z1_Gripper']
+        self.dof_idx = [self.robot.get_joint(name).dof_idx_local for name in self.dof_names]
+        self.num_dofs = self.robot.n_dofs
+        self.num_bodies = self.robot.n_links
         self.dof_wo_gripper_names = self.dof_names[:-self.cfg.env.num_gripper_joints]
+        self.dof_wo_gripper_idx = [self.robot.get_joint(name).dof_idx_local for name in self.dof_wo_gripper_names]
         self.dof_names_to_idx = {joint.name : joint.idx_local for joint in self.robot.joints}
-        print( self.dof_names_to_idx)
+        #print( self.dof_names_to_idx)
         # self.num_bodies = len(self.body_names)
         # self.num_dofs = len(self.dof_names)
         #feet_names = [s for s in self.body_names if self.cfg.asset.foot_name in s]
         feet_names = ["FR_calf", "FL_calf", "RR_calf", "RL_calf"]
         penalized_contact_names = []
-        print(self.dof_names)
+        #print(self.dof_names)
         for name in self.cfg.asset.penalize_contacts_on:
             body_names = [s for s in self.body_names if name in s]
             if len(body_names) == 0:
@@ -535,6 +557,9 @@ class ManipLoco(LeggedRobot):
         
 
         print('------------------------------------------------------')
+        print('body_names: {}'.format(self.body_names))
+        print('dof_names: {}'.format(self.dof_names))
+        print('gripper_dofs: {}'.format(self.dof_names[-self.cfg.env.num_gripper_joints:]))
         print('num_actions: {}'.format(self.num_actions))
         print('num_torques: {}'.format(self.num_torques))
         print('num_dofs: {}'.format(self.num_dofs))
@@ -542,6 +567,7 @@ class ManipLoco(LeggedRobot):
         print('penalized_contact_names: {}'.format(penalized_contact_names))
         print('termination_contact_names: {}'.format(termination_contact_names))
         print('feet_names: {}'.format(feet_names))
+        print('n_dofs: {}'.format(self.robot.n_dofs))
         print(f"EE Gripper index: {self.gripper_idx}")
 
         base_init_state_list = self.cfg.init_state.pos + self.cfg.init_state.rot + self.cfg.init_state.lin_vel + self.cfg.init_state.ang_vel
@@ -713,7 +739,7 @@ class ManipLoco(LeggedRobot):
 
         Args:
             props (List[gymapi.RigidShapeProperties]): Properties of each shape of the asset
-            env_id (int): Environment id
+            env_id (int): Environment id:-self.cfg.env.num_gripper_joints
 
         Returns:
             [List[gymapi.RigidShapeProperties]]: Modified rigid shape properties
@@ -757,7 +783,7 @@ class ManipLoco(LeggedRobot):
             (self.robot.get_dofs_position(), self.robot.get_dofs_velocity()), 
             dim=2
         )
-        print("HELLO", t.shape)
+        #print("HELLO", t.shape)
         return t
     
     def get_net_contact_forces(self):
@@ -789,7 +815,7 @@ class ManipLoco(LeggedRobot):
         # Use Genesis contact force detection
         # Get contact forces at foot positions
         a = self.robot.get_dofs_force(self.sensor_links)
-        print(a)
+        #print(a)
         return a
      
     def _init_buffers(self):
@@ -824,7 +850,7 @@ class ManipLoco(LeggedRobot):
         self.box_root_state = self._root_states[:, 1, :]
 
         self.dof_state = dof_state_tensor
-        print(self.dof_state.shape)
+        #print(self.dof_state.shape)
         self.dof_pos = self.dof_state.view(self.num_envs, self.num_dofs, 2)[..., 0]
         self.dof_pos_wo_gripper = self.dof_pos[:, :-self.cfg.env.num_gripper_joints]
         self.dof_vel = self.dof_state.view(self.num_envs, self.num_dofs, 2)[..., 1]
@@ -954,21 +980,20 @@ class ManipLoco(LeggedRobot):
 
         # joint positions offsets and PD gains
         self.default_dof_pos = torch.zeros(self.num_dofs, dtype=torch.float, device=self.device, requires_grad=False)
-        for i in range(self.num_dofs):
-            print(i)
-            print(self.dof_names)
-            name = self.dof_names[i]
+        for i, name in enumerate(self.dof_names):
             angle = self.cfg.init_state.default_joint_angles.get(name, 0.0)
             self.default_dof_pos[i] = angle
-        
-        for i in range(self.num_torques):
-            name = self.dof_names[i]
             found = False
+
+            if i==18:
+                break
+            
             for dof_name in self.cfg.control.stiffness.keys():
                 if dof_name in name:
                     self.p_gains[i] = self.cfg.control.stiffness.get(dof_name, 0.0)
                     self.d_gains[i] = self.cfg.control.damping.get(dof_name)
                     found = True
+                    
             if not found:
                 self.p_gains[i] = 0.
                 self.d_gains[i] = 0.
@@ -978,6 +1003,29 @@ class ManipLoco(LeggedRobot):
         self.default_dof_pos_wo_gripper = self.default_dof_pos[:-self.cfg.env.num_gripper_joints]
         
         self.global_steps = 0
+
+        self.dof_pos_limits = torch.zeros(len(self.dof_names), 2, dtype=torch.float, device=self.device, requires_grad=False)
+        self.dof_vel_limits = torch.zeros(len(self.dof_names), dtype=torch.float, device=self.device, requires_grad=False)
+        self.torque_limits_low = torch.zeros(len(self.dof_names), dtype=torch.float, device=self.device, requires_grad=False)
+        self.torque_limits_high = torch.zeros(len(self.dof_names), dtype=torch.float, device=self.device, requires_grad=False)
+        
+        limits_from_gs =self.robot.get_dofs_limit(self.dof_idx, 0)
+
+        for i, name in enumerate(self.dof_names):
+            self.torque_limits_low[i] = limits_from_gs[0][i]
+            self.torque_limits_high[i] = limits_from_gs[1][i]
+
+
+        # for i in range(len(props)):
+            # self.dof_pos_limits[i, 0] = float("-inf")
+            # self.dof_pos_limits[i, 1] = float("inf")
+            # self.dof_vel_limits[i] = props["velocity"][i].item()
+            # self.torque_limits[i] = 
+            # soft limits
+            # m = (self.dof_pos_limits[i, 0] + self.dof_pos_limits[i, 1]) / 2
+            # r = self.dof_pos_limits[i, 1] - self.dof_pos_limits[i, 0]
+            # self.dof_pos_limits[i, 0] = m - 0.5 * r * self.cfg.rewards.soft_dof_pos_limit
+            # self.dof_pos_limits[i, 1] = m + 0.5 * r * self.cfg.rewards.soft_dof_pos_limit
 
     def _reset_root_states(self, env_ids):
         """ Resets ROOT states position and velocities of selected environmments
@@ -1001,7 +1049,7 @@ class ManipLoco(LeggedRobot):
         # base velocities
         self.root_states[env_ids, 7:13] = gs_rand_float(-self.cfg.init_state.init_vel_perturb_range, self.cfg.init_state.init_vel_perturb_range, (len(env_ids), 6), device=self.device) # [7:10]: lin vel, [10:13]: ang vel
 
-        self.gym.set_actor_root_state_tensor(self.sim, self._root_states)
+        #self.gym.set_actor_root_state_tensor(self.sim, self._root_states)
 
         self.robot.set_pos(
             self.root_states[:, 0:3]
@@ -1011,13 +1059,7 @@ class ManipLoco(LeggedRobot):
             self.root_states[:, 3:7]
         )
 
-        self.robot.set_vel(
-            self.root_states[:, 7:9]
-        )
-
-        self.robot.set_ang(
-            self.root_states[:, 9:]
-        )
+        self._reset_dofs(env_ids)
 
         self._root_states[:] = self.get_root_state()
 
@@ -1324,12 +1366,13 @@ class ManipLoco(LeggedRobot):
             [torch.Tensor]: Torques sent to the simulation
         """
         actions_scaled = actions * self.motor_strength * self.action_scale
-
-        default_torques = self.p_gains * (actions_scaled + self.default_dof_pos_wo_gripper - self.dof_pos_wo_gripper) - self.d_gains * self.dof_vel_wo_gripper
+        print(self.p_gains.shape, self.default_dof_pos_wo_gripper.shape, self.dof_pos_wo_gripper.shape, self.dof_vel_wo_gripper.shape)
+        default_torques = self.p_gains * (actions_scaled + self.default_dof_pos_wo_gripper[self.dof_wo_gripper_idx] - self.dof_pos_wo_gripper[:, self.dof_wo_gripper_idx]) - self.d_gains * self.dof_vel_wo_gripper[:, self.dof_wo_gripper_idx]
         default_torques[:, -6:] = 0
         torques = torch.cat([default_torques, self.gripper_torques_zero], dim=-1)
         
-        return torch.clip(torques, -self.torque_limits, self.torque_limits)
+        return torch.clip(torques, self.torque_limits_low, self.torque_limits_high)
+    
     
     def _resample_ee_goal_sphere_once(self, env_ids):
         self.ee_goal_sphere[env_ids, 0] = gs_rand_float(self.goal_ee_ranges["pos_l"][0], self.goal_ee_ranges["pos_l"][1], (len(env_ids), 1), device=self.device).squeeze(1)
