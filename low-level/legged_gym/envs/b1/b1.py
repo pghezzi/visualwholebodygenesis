@@ -66,7 +66,7 @@ class B1(LeggedRobot):
 
     def _reward_feet_air_time(self):
         # Reward long steps
-        contact = self.link_contact_forces[:, self.feet_indices, 2] > 1.
+        contact = self.link_contact_forces[:, self.feet_indices, 2] > 2.
         contact_filt = torch.logical_or(contact, self.last_contacts) 
         self.last_contacts = contact
         first_contact = (self.feet_air_time > 0.) * contact_filt
