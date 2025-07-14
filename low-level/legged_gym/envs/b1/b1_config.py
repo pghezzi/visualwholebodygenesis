@@ -1,7 +1,7 @@
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
 from legged_gym.envs.go2.go2_config import GO2Cfg, GO2CfgPPO
 
-class B1Cfg( GO2CfgPPO ):
+class B1Cfg( GO2Cfg ):
     
     class init_state( LeggedRobotCfg.init_state ):
         pos = [0.0, 0.0, 0.5] # x,y,z [m]
@@ -80,11 +80,9 @@ class B1Cfg( GO2CfgPPO ):
             lin_vel_x = [-0.8, 0.8] # min max [m/s]
             ang_vel_yaw = [-1.0, 1.0]    # min max [rad/s]
 
-class B1CfgPPO( LeggedRobotCfgPPO ):
+class B1CfgPPO( GO2CfgPPO ):
     experiment_name = 'b1'
-    class algorithm( LeggedRobotCfgPPO.algorithm ):
-        entropy_coef = 0.01
-    class runner( LeggedRobotCfgPPO.runner ):
+    class runner( GO2CfgPPO.runner ):
         run_name = ''
         experiment_name = 'b1'
         save_interval = 100
