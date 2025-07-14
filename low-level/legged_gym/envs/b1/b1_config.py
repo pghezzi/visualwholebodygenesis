@@ -1,122 +1,84 @@
 from legged_gym.envs.base.legged_robot_config import LeggedRobotCfg, LeggedRobotCfgPPO
+from legged_gym.envs.go2.go2_config import GO2Cfg, GO2CfgPPO
 
-class B1Cfg( LeggedRobotCfg ):
+class B1Cfg( GO2CfgPPO ):
     
-    class env( LeggedRobotCfg.env ):
-        num_envs = 2048
-        num_observations = 48
-        num_actions = 12
-    
-    class terrain( LeggedRobotCfg.terrain ):
-        mesh_type = "plane" # none, plane, heightfield
-        friction = 1.0
-        restitution = 0.
-        
     class init_state( LeggedRobotCfg.init_state ):
-        pos = [0.0, 0.0, 0.42] # x,y,z [m]
+        pos = [0.0, 0.0, 0.5] # x,y,z [m]
         default_joint_angles = { # = target angles [rad] when action = 0.0
-            'FL_hip_joint': 0.1,   # [rad]
-            'RL_hip_joint': 0.1,   # [rad]
-            'FR_hip_joint': -0.1 ,  # [rad]
-            'RR_hip_joint': -0.1,   # [rad]
-
+            'FL_hip_joint': 0.2,   # [rad]
             'FL_thigh_joint': 0.8,     # [rad]
-            'RL_thigh_joint': 1.,   # [rad]
-            'FR_thigh_joint': 0.8,     # [rad]
-            'RR_thigh_joint': 1.,   # [rad]
-
             'FL_calf_joint': -1.5,   # [rad]
+
+            'RL_hip_joint': 0.2,   # [rad]
+            'RL_thigh_joint': 0.8,   # [rad]
             'RL_calf_joint': -1.5,    # [rad]
+
+            'FR_hip_joint': -0.2 ,  # [rad]
+            'FR_thigh_joint': 0.8,     # [rad]
             'FR_calf_joint': -1.5,  # [rad]
+
+            'RR_hip_joint': -0.2,   # [rad]
+            'RR_thigh_joint': 0.8,   # [rad]
             'RR_calf_joint': -1.5,    # [rad]
         }
-        # initial state randomization
-        yaw_angle_range = [0., 3.14] # min max [rad]
+        rand_yaw_range = np.pi/2
+        origin_perturb_range = 0.5
+        init_vel_perturb_range = 0.1
 
-    class control( LeggedRobotCfg.control ):
-        # PD Drive parameters:
-        # control_type = 'P'
-        stiffness = {'joint': 20.}   # [N*m/rad]
-        damping = {'joint': 0.5}     # [N*m*s/rad]
-        action_scale = 0.25 # action scale: target angle = actionScale * action + defaultAngle
-        dt =  0.02  # control frequency 50Hz
-        decimation = 4 # decimation: Number of control action updates @ sim DT per policy DT
+    class control ( LeggedRobotCfg.control ):
+        stiffness = {'joint': 80}  # [N*m/rad] # Kp: 80, 150, 200
+        damping = {'joint': 2.0}     # [N*m*s/rad]
+
+        adaptive_arm_gains = False
+        # action scale: target angle = actionScale * action + defaultAngle
+        action_scale = [0.4, 0.45, 0.45] * 2 + [0.4, 0.45, 0.45] * 2 + [2.1, 0.6, 0.6, 0, 0, 0]
+        # decimation: Number of control action updates @ sim DT per policy DT
+        decimation = 4
+        torque_supervision = False
 
     class asset( LeggedRobotCfg.asset ):
-        file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/b1/urdf/b1.urdf'
-        dof_names = [        # specify yhe sequence of actions
-            'FR_hip_joint',
-            'FR_thigh_joint',
-            'FR_calf_joint',
+        file = '{LEGGED_GYM_ROOT_DIR}/resources/robots/b1z1/urdf/b1z1.urdf'
+        dof_names = [
             'FL_hip_joint',
             'FL_thigh_joint',
             'FL_calf_joint',
+            'RL_hip_joint',
+            'RL_thigh_joint',
+            'RL_calf_joint',
+            'FR_hip_joint',
+            'FR_thigh_joint',
+            'FR_calf_joint',
             'RR_hip_joint',
             'RR_thigh_joint',
             'RR_calf_joint',
-            'RL_hip_joint',
-            'RL_thigh_joint',
-            'RL_calf_joint',]
-        foot_name = ["foot"]
-        penalize_contacts_on = ["thigh", "calf"]
+        ]
+        foot_name = "foot"
+        penalize_contacts_on = ["thigh", "base", "calf"]
         terminate_after_contacts_on = ["base"]
-        links_to_keep = ['FL_foot', 'FR_foot', 'RL_foot', 'RR_foot']
-        self_collisions = True
-  
-    class rewards( LeggedRobotCfg.rewards ):
-        soft_dof_pos_limit = 0.9
-        base_height_target = 0.36
-        class scales( LeggedRobotCfg.rewards.scales ):
-            # limitation
-            dof_pos_limits = -10.0
-            collision = -1.0
-            # command tracking
-            tracking_lin_vel = 1.0
-            tracking_ang_vel = 0.5
-            # smooth
-            lin_vel_z = -2.0
-            base_height = -1.0
-            ang_vel_xy = -0.05
-            orientation = -3.0
-            dof_vel = -5.e-4
-            dof_acc = -2.e-7
-            action_rate = -0.01
-            torques = -2.e-4
-            # gait
-            feet_air_time = 1.0
-            # dof_close_to_default = -0.1
-    
-    class commands( LeggedRobotCfg.commands ):
+        self_collisions = 0 # 1 to disable, 0 to enable...bitwise filter
+        flip_visual_attachments = False
+        collapse_fixed_joints = True # Specific fixed joints can be kept by adding " <... dont_collapse="true">
+        fix_base_link = False
+
+    class rewards (LeggedRobotCfg.rewards):
+        feet_aritime_allfeet = False
+
+    class commands ( LeggedRobotCfg.commands ) :
         curriculum = True
-        max_curriculum = 1.
-        num_commands = 4 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
-        resampling_time = 10.  # time before command are changed[s]
-        heading_command = True # if true: compute ang vel command from heading error
-        class ranges( LeggedRobotCfg.commands.ranges ):
-            lin_vel_x = [-0.5, 0.5] # min max [m/s]
-            lin_vel_y = [-1.0, 1.0]   # min max [m/s]
-            ang_vel_yaw = [-1, 1]    # min max [rad/s]
-            heading = [-3.14, 3.14]
-    
-    class domain_rand:
-        randomize_friction = True
-        friction_range = [0.2, 1.7]
-        randomize_base_mass = True
-        added_mass_range = [-1., 1.]
-        push_robots = True
-        push_interval_s = 15
-        max_push_vel_xy = 1.
-        simulate_action_latency = False # 1 step delay
-        randomize_com_displacement = True
-        com_displacement_range = [-0.01, 0.01]
-    
-    # viewer camera:
-    class viewer:
-        ref_env = 0
-        pos = [10, 0, 6]       # [m]
-        lookat = [11., 5, 3.]  # [m]
-        num_rendered_envs = 10  # number of environments to be rendered
-        add_camera = False
+        num_commands = 3
+        resampling_time = 3. # time before command are changed[s]
+
+        lin_vel_x_schedule = [0, 0.5]
+        ang_vel_yaw_schedule = [0, 1]
+        tracking_ang_vel_yaw_schedule = [0, 1]
+
+        ang_vel_yaw_clip = 0.5
+        lin_vel_x_clip = 0.2
+
+        class ranges:
+            lin_vel_x = [-0.8, 0.8] # min max [m/s]
+            ang_vel_yaw = [-1.0, 1.0]    # min max [rad/s]
 
 class B1CfgPPO( LeggedRobotCfgPPO ):
     experiment_name = 'b1'
