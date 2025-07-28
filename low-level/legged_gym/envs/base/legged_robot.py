@@ -58,6 +58,29 @@ class LeggedRobot(BaseTask):
         Args:
             actions (torch.Tensor): Tensor of shape (num_envs, num_actions_per_env)
         """
+
+        # print(f'foot contact forces: {self.link_contact_forces[:,13:17,:]}, shape: {self.link_contact_forces.shape},feet_indices: {self.feet_indices}')
+        # def get_link_names(names):
+        #     link_indices = list()
+        #     link_names = list()
+        #     for link in self.robot.links:
+        #         flag = False
+        #         for name in names:
+        #             if name in link.name:
+        #                 flag = True
+        #         if flag:
+        #             link_indices.append(link.idx - self.robot.link_start)
+        #             link_names.append(link.name)
+        #     return link_indices, link_names
+        # temp = get_link_names(self.cfg.asset.foot_name)
+        # print(f'===============================================')
+        
+        # for i in range(len(temp[0])):
+        #     print(f'i: {i}, link index: {temp[0][i]}, link name: {temp[1][i]}')
+        # print("--------------------------------")
+        # print(f'all link_names: {[link.name for link in self.robot.links]}, all link_indices: {[link.idx - self.robot.link_start for link in self.robot.links]}')
+        # print(f'===============================================')
+
         clip_actions = self.cfg.normalization.clip_actions
         self.actions = torch.clip(actions, -clip_actions, clip_actions).to(self.device)
         exec_actions = self.last_actions if self.simulate_action_latency else self.actions
@@ -358,7 +381,7 @@ class LeggedRobot(BaseTask):
             self._push_robots()
 
     def _resample_commands(self, env_ids):
-        """ Randommly select commands of some environments
+        """ Randommly select commands of some self.self.commands
 
         Args:
             env_ids (List[int]): Environments ids for which new commands are needed

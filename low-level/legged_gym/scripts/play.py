@@ -87,32 +87,32 @@ def play(args):
             env.set_camera(camera_position_follow, camera_lookat_follow)
             env.floating_camera.render()
         if RECORD_FRAMES and i == stop_record:
-            env.floating_camera.stop_recording(save_to_filename="go2_rough_demo.mp4", fps=30)
-            print("Saved recording to " + "go2_rough_demo.mp4")
+            mp4name = f"{train_cfg.experiment_name}_demo.mp4"
+            env.floating_camera.stop_recording(save_to_filename=mp4name, fps=30)
+            print("Saved recording to " + mp4name)
         
         # print debug info
         # print("base lin vel: ", env.base_lin_vel[robot_index, :].cpu().numpy())
         # print("base yaw angle: ", env.base_euler[robot_index, 2].item())
-        
-        if i < stop_state_log:
-            logger.log_states(
-                {
-                    'dof_pos_target': actions[robot_index, joint_index].item() * env.cfg.control.action_scale,
-                    'dof_pos': env.dof_pos[robot_index, joint_index].item(),
-                    'dof_vel': env.dof_vel[robot_index, joint_index].item(),
-                    'dof_torque': env.torques[robot_index, joint_index].item(),
-                    'command_x': env.commands[robot_index, 0].item(),
-                    'command_y': env.commands[robot_index, 1].item(),
-                    'command_yaw': env.commands[robot_index, 2].item(),
-                    'base_vel_x': env.base_lin_vel[robot_index, 0].item(),
-                    'base_vel_y': env.base_lin_vel[robot_index, 1].item(),
-                    'base_vel_z': env.base_lin_vel[robot_index, 2].item(),
-                    'base_vel_yaw': env.base_ang_vel[robot_index, 2].item(),
-                    'contact_forces_z': env.link_contact_forces[robot_index, env.feet_indices, 2].cpu().numpy()
-                }
-            )
-        elif i==stop_state_log:
-            logger.plot_states()
+        #if i < stop_state_log:
+        #    logger.log_states(
+        #        {
+        #            'dof_pos_target': actions[robot_index, joint_index].item() * env.cfg.control.action_scale,
+        #            'dof_pos': env.dof_pos[robot_index, joint_index].item(),
+        #            'dof_vel': env.dof_vel[robot_index, joint_index].item(),
+        #            'dof_torque': env.torques[robot_index, joint_index].item(),
+        #            'command_x': env.commands[robot_index, 0].item(),
+        #            'command_y': env.commands[robot_index, 1].item(),
+        #            'command_yaw': env.commands[robot_index, 2].item(),
+        #            'base_vel_x': env.base_lin_vel[robot_index, 0].item(),
+        #            'base_vel_y': env.base_lin_vel[robot_index, 1].item(),
+        #            'base_vel_z': env.base_lin_vel[robot_index, 2].item(),
+        #            'base_vel_yaw': env.base_ang_vel[robot_index, 2].item(),
+        #            'contact_forces_z': env.link_contact_forces[robot_index, env.feet_indices, 2].cpu().numpy()
+        #        }
+        #    )
+        #elif i==stop_state_log:
+        #    logger.plot_states()
         if  0 < i < stop_rew_log:
             if infos["episode"]:
                 num_episodes = torch.sum(env.reset_buf).item()
@@ -123,7 +123,7 @@ def play(args):
 
 if __name__ == '__main__':
     EXPORT_POLICY = True
-    RECORD_FRAMES = False  # only record frames in extra camera view
+    RECORD_FRAMES = True  # only record frames in extra camera view
     MOVE_CAMERA   = False
     FOLLOW_ROBOT  = True
     assert not (MOVE_CAMERA and FOLLOW_ROBOT), "Cannot move camera and follow robot at the same time"

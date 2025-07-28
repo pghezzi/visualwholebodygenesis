@@ -147,7 +147,7 @@ class LeggedRobotCfg(BaseConfig):
         pos = [10, 0, 6]       # [m]
         lookat = [11., 5, 3.]  # [m]
         num_rendered_envs = 1  # number of environments to be rendered
-        add_camera = False
+        add_camera = True
 
     class sim:
         use_implicit_controller = False
