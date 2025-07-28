@@ -1,5 +1,7 @@
 import torch
-from legged_gym.utils.gs_utils import *
+import sys
+sys.path.append('/home/lily-hcrlab/visualwholebodygenesis')
+from misc.torch_utils import *
 
 class ManipLoco_rewards:
     def __init__(self, env):
@@ -10,8 +12,8 @@ class ManipLoco_rewards:
     # -------------Z1: Reward functions----------------
 
     def _reward_tracking_ee_sphere(self):
-        ee_pos_local = gs_quat_rotate_inverse(self.env.base_yaw_quat, self.env.ee_pos - self.env.get_ee_goal_spherical_center())
-        ee_pos_error = torch.sum(torch.abs(gs_cart2sphere(ee_pos_local) - self.env.curr_ee_goal_sphere) * self.env.sphere_error_scale, dim=1)
+        ee_pos_local = quat_rotate_inverse(self.env.base_yaw_quat, self.env.ee_pos - self.env.get_ee_goal_spherical_center())
+        ee_pos_error = torch.sum(torch.abs(cart2sphere(ee_pos_local) - self.env.curr_ee_goal_sphere) * self.env.sphere_error_scale, dim=1)
         return torch.exp(-ee_pos_error/self.env.cfg.rewards.tracking_ee_sigma), ee_pos_error
 
     def _reward_tracking_ee_world(self):
@@ -34,12 +36,12 @@ class ManipLoco_rewards:
         return reward, metric
 
     def _reward_tracking_ee_cart(self):
-        target_ee = self.env.get_ee_goal_spherical_center() + gs_quat_apply(self.env.base_yaw_quat, self.env.curr_ee_goal_cart)
+        target_ee = self.env.get_ee_goal_spherical_center() + quat_apply(self.env.base_yaw_quat, self.env.curr_ee_goal_cart)
         ee_pos_error = torch.sum(torch.abs(self.env.ee_pos - target_ee), dim=1)
         return torch.exp(-ee_pos_error/self.env.cfg.rewards.tracking_ee_sigma), ee_pos_error
     
     def _reward_tracking_ee_orn(self):
-        ee_orn_euler = torch.stack(gs_euler_from_quat(self.env.ee_orn), dim=-1)
+        ee_orn_euler = torch.stack(euler_from_quat(self.env.ee_orn), dim=-1)
         orn_err = torch.sum(torch.abs(torch_wrap_to_pi_minuspi(self.env.ee_goal_orn_euler - ee_orn_euler)) * self.env.orn_error_scale, dim=1)
         return torch.exp(-orn_err/self.env.cfg.rewards.tracking_ee_sigma), orn_err
 
@@ -48,7 +50,7 @@ class ManipLoco_rewards:
         return energy, energy
 
     def _reward_tracking_ee_orn_ry(self):
-        ee_orn_euler = torch.stack(gs_euler_from_quat(self.env.ee_orn), dim=-1)
+        ee_orn_euler = torch.stack(euler_from_quat(self.env.ee_orn), dim=-1)
         orn_err = torch.sum(torch.abs((torch_wrap_to_pi_minuspi(self.env.ee_goal_orn_euler - ee_orn_euler) * self.env.orn_error_scale)[:, [0, 2]]), dim=1)
         return torch.exp(-orn_err/self.env.cfg.rewards.tracking_ee_sigma), orn_err
 
@@ -159,7 +161,10 @@ class ManipLoco_rewards:
     def _reward_dof_pos_limits(self):
         out_of_limits = -(self.env.dof_pos - self.env.dof_pos_limits[:, 0]).clip(max=0.) # lower limit
         out_of_limits += (self.env.dof_pos - self.env.dof_pos_limits[:, 1]).clip(min=0.) # upper limit
+        # print(f'out_of_limits: {out_of_limits}')
+        # print(f'self.env.dof_pos: {self.env.dof_pos}, self.env.dof_pos_limits: {self.env.dof_pos_limits}')
         rew = torch.sum(out_of_limits[:, :12], dim=1)
+        # print(f'rew: {rew}')
         return rew, rew
     
     def _reward_delta_torques(self):
@@ -196,6 +201,9 @@ class ManipLoco_rewards:
         
         self.env.last_contact_forces = self.env.force_sensor_tensor.clone()
         result[self.env.episode_length_buf<50] = 0.
+        for i in range(result.shape[0]):
+            if result[i] > 0:
+                print(f'result[i]: {result[i]}')
         return result, result
     
     def _reward_alive(self):
@@ -211,6 +219,10 @@ class ManipLoco_rewards:
         reset_flag = (self.env.episode_length_buf > 2./self.env.dt).type(torch.float)
         forces = torch.sum((torch.norm(self.env.force_sensor_tensor, dim=-1) - self.env.cfg.rewards.max_contact_force).clip(min=0), dim=-1)
         rew = reset_flag * forces
+
+        #for i in range(rew.shape[0]):
+        #     if rew[i] > 0:
+        #         print(f'rew[i]: {rew[i]}')
         return rew, rew
     
     def _reward_orientation(self):
@@ -353,15 +365,21 @@ class ManipLoco_rewards:
 
     def _reward_feet_air_time(self):
         # Reward long steps
-        # Need to filter the contacts because the contact reporting of PhysX is unreliable on meshes
-        first_contact = (self.env.feet_air_time > 0.) * self.env.foot_contacts_from_sensor  #self.env.contact_filt
+        contact = self.env.link_contact_forces[:, self.env.feet_indices, 2] > 2.
+        contact_filt = torch.logical_or(contact, self.env.last_contacts) 
+        self.env.last_contacts = contact
+        # print(f'contact: {contact}, contact_filt: {contact_filt}, last_contacts: {self.env.last_contacts}')
+        first_contact = (self.env.feet_air_time > 0.) * contact_filt
         self.env.feet_air_time += self.env.dt
-
-        if self.cfg.rewards.feet_aritime_allfeet:
-            rew_airTime = torch.sum((self.env.feet_air_time - 0.5) * first_contact, dim=1)
+        
+        if self.env.cfg.rewards.feet_aritime_allfeet:
+           rew_airTime = torch.sum((self.env.feet_air_time - 0.5) * first_contact, dim=1)
         else:
             rew_airTime = torch.sum((self.env.feet_air_time[:, :2] - 0.5) * first_contact[:, :2], dim=1)
-        
-        rew_airTime *= self.env._get_walking_cmd_mask()  # reward for stepping for any of the 3 motions
-        self.env.feet_air_time *= ~ self.env.foot_contacts_from_sensor  #self.env.contact_filt
+        # print(f'feet_air_time: {self.env.feet_air_time}, first_contact: {first_contact}, first_contact[:,:2]: {first_contact[:, :2]}')
+        rew_airTime = torch.sum((self.env.feet_air_time - 0.2) * first_contact, dim=1) # reward only on first contact with the ground
+        rew_airTime *= torch.norm(self.env.commands[:, :2], dim=1) > 0.1 #no reward for zero command
+        # print(f'rew_airTime: {rew_airTime}')
+        self.env.feet_air_time *= ~contact_filt
+        # print(f'feet_air_time: {self.env.feet_air_time}')
         return rew_airTime, rew_airTime

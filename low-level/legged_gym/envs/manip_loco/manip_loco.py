@@ -29,7 +29,7 @@
 # Copyright (c) 2021 ETH Zurich, Nikita Rudin
 import numpy as np
 import os
-
+import time
 # DOF == Joints
 # Bodies == Links
 
@@ -44,6 +44,7 @@ from legged_gym.envs.base.legged_robot import LeggedRobot
 from legged_gym import LEGGED_GYM_ROOT_DIR
 from legged_gym.utils.helpers import class_to_dict
 from legged_gym.envs.b1z1.b1z1_config import B1Z1RoughCfg
+
 
 
 class ManipLoco(LeggedRobot):
@@ -99,12 +100,12 @@ class ManipLoco(LeggedRobot):
             self.robot.control_dofs_position(all_pos_targets, dofs_idx_local=self.dof_idx)
             # Pass only the torques for the controlled DOFs (first num_torques DOFs)
             self.robot.control_dofs_force(self.torques, dofs_idx_local=self.dof_idx)
+
             self.scene.step()  # or however you step the Genesis scene
             self._root_states[:] = self.get_root_state()
             self.dof_state[:] = self.get_dof_state()
             self.jacobian_whole[:] = self.get_jacobian_tensor()
             self._rigid_body_state[:] = self.get_rigid_body_state_tensor()
-        
         self.post_physics_step()
 
         # return clipped obs, clipped states (None), rewards, dones and infos
@@ -130,6 +131,18 @@ class ManipLoco(LeggedRobot):
         self.episode_length_buf += 1
         self.common_step_counter += 1
 
+        # net_contact_forces_from_acceleration = self.get_net_contact_forces_from_acceleration()
+        # Get contact information from the robot
+        robot_contacts = self.robot.get_contacts(self.terrain)
+        
+        # Extract foot contact information from contact data
+        self.foot_contacts_from_sensor = self._extract_foot_contacts_from_robot_contacts(robot_contacts)
+        self.link_contact_forces[:] = self.robot.get_links_net_contact_force()
+        # if self.foot_contacts_from_sensor.any():
+            # print(f'self.foot_contacts_from_sensor: {self.foot_contacts_from_sensor[5]}')
+        
+        # print(f'Contact Forces {contact_forces_2}')
+
         # prepare quantities
         self.base_quat[:] = self.root_states[:, 3:7]
         self.base_lin_vel[:] = gs_quat_rotate_inverse(self.base_quat, self.root_states[:, 7:10])
@@ -142,8 +155,9 @@ class ManipLoco(LeggedRobot):
         contact = torch.norm(self.contact_forces[:, self.feet_indices], dim=-1) > 2.
         self.contact_filt = torch.logical_or(contact, self.last_contacts) 
         self.last_contacts = contact
+        
 
-        self.foot_contacts_from_sensor = self.force_sensor_tensor > 1.5    
+        # self.foot_contacts_from_sensor = self.force_sensor_tensor > 1.5    
 
         self._post_physics_step_callback()
         
@@ -153,6 +167,10 @@ class ManipLoco(LeggedRobot):
         # compute observations, rewards, resets, ...
         self.check_termination()
         self.compute_reward()
+
+        
+
+        
         env_ids = self.reset_buf.nonzero(as_tuple=False).flatten()
         self.reset_idx(env_ids, start=False)
         self.compute_observations() # in some cases a simulation step might be required to refresh some obs (for example body positions)
@@ -280,8 +298,7 @@ class ManipLoco(LeggedRobot):
 
     def create_sim(self):
         super().create_sim()
-        # self._create_envs()
-        
+
     def reset_idx(self, env_ids, start=False):
         """ Reset some environments.
             Calls self._reset_dofs(env_ids), self._reset_root_states(env_ids), and self._resample_commands(env_ids)
@@ -527,20 +544,28 @@ class ManipLoco(LeggedRobot):
         # self.num_bodies = len(self.body_names)
         # self.num_dofs = len(self.dof_names)
         #feet_names = [s for s in self.body_names if self.cfg.asset.foot_name in s]
-        feet_names = ["FR_calf", "FL_calf", "RR_calf", "RL_calf"]
-        penalized_contact_names = []
-        #print(self.dof_names)
-        for name in self.cfg.asset.penalize_contacts_on:
-            body_names = [s for s in self.body_names if name in s]
-            if len(body_names) == 0:
-                raise Exception('No body found with name {}'.format(name))
-            penalized_contact_names.extend(body_names)
-        termination_contact_names = []
-        for name in self.cfg.asset.terminate_after_contacts_on:
-            body_names = [s for s in self.body_names if name in s]
-            if len(body_names) == 0:
-                raise Exception('No body found with name {}'.format(name))
-            termination_contact_names.extend(body_names)
+
+        def find_link_indices(names):
+            link_indices = list()
+            for link in self.robot.links:
+                flag = False
+                for name in names:
+                    if name in link.name:
+                        flag = True
+                if flag:
+                    link_indices.append(link.idx - self.robot.link_start)
+            return link_indices
+        self.termination_contact_indices = torch.tensor(find_link_indices(self.cfg.asset.terminate_after_contacts_on), device=self.device, requires_grad=False, dtype=torch.long)
+        all_link_names = [link.name for link in self.robot.links]
+        print(f"all link names: {all_link_names}")
+        print("termination link indices:", self.termination_contact_indices)
+        self.penalized_contact_indices = torch.tensor(find_link_indices(self.cfg.asset.penalize_contacts_on), device=self.device, requires_grad=False, dtype=torch.long)
+        print(f"penalized link indices: {self.penalized_contact_indices}")
+        self.feet_indices = torch.tensor(find_link_indices(self.cfg.asset.foot_name), device=self.device, requires_grad=False, dtype=torch.long)
+        print(f"feet link indices: {self.feet_indices}")
+        assert len(self.termination_contact_indices) > 0
+        assert len(self.feet_indices) > 0
+        self.feet_link_indices_world_frame = [i+1 for i in self.feet_indices]
         
         self.sensor_links = [self.dof_names_to_idx[name] for name in ["FR_calf_joint", "FL_calf_joint", "RR_calf_joint", "RL_calf_joint"]]
         self.gripper_idx = self.body_names_to_idx[self.cfg.asset.gripper_name]
@@ -567,9 +592,9 @@ class ManipLoco(LeggedRobot):
         print('num_torques: {}'.format(self.num_torques))
         print('num_dofs: {}'.format(self.num_dofs))
         print('num_bodies: {}'.format(self.num_bodies))
-        print('penalized_contact_names: {}'.format(penalized_contact_names))
-        print('termination_contact_names: {}'.format(termination_contact_names))
-        print('feet_names: {}'.format(feet_names))
+        print('penalized_contact_names: {}'.format([self.robot.links[index].name for index in self.penalized_contact_indices]))
+        print('termination_contact_names: {}'.format([self.robot.links[index].name for index in self.termination_contact_indices]))
+        print('feet_names: {}'.format([self.robot.links[index].name for index in self.feet_indices]))
         print('n_dofs: {}'.format(self.robot.n_dofs))
         print(f"EE Gripper index: {self.gripper_idx}")
 
@@ -668,18 +693,6 @@ class ManipLoco(LeggedRobot):
         self.hip_indices = torch.zeros(len(hip_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i, name in enumerate(hip_names):
             self.hip_indices[i] = self.dof_names.index(name)
-                
-        self.feet_indices = torch.zeros(len(feet_names), dtype=torch.long, device=self.device, requires_grad=False)
-        for i, name in enumerate(feet_names):
-            self.feet_indices[i] = self.body_names_to_idx[name]
-
-        self.penalized_contact_indices = torch.zeros(len(penalized_contact_names), dtype=torch.long, device=self.device, requires_grad=False)
-        for i, name in enumerate(penalized_contact_names):
-            self.penalized_contact_indices[i] = self.body_names_to_idx[name]
-
-        self.termination_contact_indices = torch.zeros(len(termination_contact_names), dtype=torch.long, device=self.device, requires_grad=False)
-        for i, name in enumerate(termination_contact_names):
-            self.termination_contact_indices[i] = self.body_names_to_idx[name]
         
         print('penalized_contact_indices: {}'.format(self.penalized_contact_indices))
         print('termination_contact_indices: {}'.format(self.termination_contact_indices))
@@ -793,10 +806,16 @@ class ManipLoco(LeggedRobot):
         # replace with box
         robot = self.robot.get_links_net_contact_force()
         box = self.box.get_links_net_contact_force()
-        #print(f'r.shape, b.shape():{robot.shape}, {box.shape}')
+        # print(f'r.shape, b.shape():{robot}')
         return torch.cat(
             (robot, box),dim=1
         )
+    def get_net_contact_forces_from_acceleration(self):
+        robot_links = self.robot.links
+        link_masses = torch.tensor([link.get_mass() for link in robot_links], device=self.device)
+        link_accelerations = torch.tensor(self.robot.get_links_acc(), device=self.device)
+        net_contact_forces = link_masses * link_accelerations
+        return net_contact_forces
     
     def get_rigid_body_state_tensor(self):
         # print(f'self.robot.get_links_pos().shape, self.robot.get_links_quat().shape, self.robot.get_links_vel().shape, self.robot.get_links_ang().shape: {self.robot.get_links_pos().shape}, {self.robot.get_links_quat().shape}, {self.robot.get_links_vel().shape}, {self.robot.get_links_ang().shape}')
@@ -867,6 +886,26 @@ class ManipLoco(LeggedRobot):
         #self.time_out_buf = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
 
         self.dof_pos = self.dof_state.view(self.num_envs, self.num_dofs, 2)[..., 0]
+        # self.dof_pos_limits = torch.tensor([[-0.7500,  0.7500],
+        # [-1.0000,  3.5000],
+        # [-2.6000, -0.6000],
+        # [-0.7500,  0.7500],
+        # [-1.0000,  3.5000],
+        # [-2.6000, -0.6000],
+        # [-0.7500,  0.7500],
+        # [-1.0000,  3.5000],
+        # [-2.6000, -0.6000],
+        # [-0.7500,  0.7500],
+        # [-1.0000,  3.5000],
+        # [-2.6000, -0.6000],
+        # [-2.6180,  2.6180],
+        # [ 0.0000,  3.1416],
+        # [-4.7822,  0.0000],
+        # [-1.7453,  1.5708],
+        # [-1.7279,  1.7279],
+        # [-2.7925,  2.7925],
+        # [-1.5708,  0.0000]]).to(self.device)
+        
         self.dof_pos_wo_gripper = self.dof_pos[:, :-self.cfg.env.num_gripper_joints]
         self.dof_vel = self.dof_state.view(self.num_envs, self.num_dofs, 2)[..., 1]
         self.dof_vel_wo_gripper = self.dof_vel[:, :-self.cfg.env.num_gripper_joints]
@@ -941,6 +980,12 @@ class ManipLoco(LeggedRobot):
                                                    device=self.device).repeat(self.num_envs, 1)
         
         self.curr_ee_goal_cart_world = self._get_ee_goal_spherical_center() + gs_quat_apply(self.base_yaw_quat, self.curr_ee_goal_cart)
+
+        self.link_contact_forces = torch.tensor(
+            self.robot.get_links_net_contact_force(),
+            device=self.device,
+            dtype=gs.tc_float,
+        )
 
         print('------------------------------------------------------')
         print(f'root_states shape: {self.root_states.shape}')
@@ -1072,6 +1117,13 @@ class ManipLoco(LeggedRobot):
 
         self.robot.set_quat(
             self.root_states[:, 3:7]
+        )
+
+        self.box.set_pos(
+            self.box_root_state[:, 0:3]
+        )
+        self.box.set_quat(
+            self.box_root_state[:, 3:7]
         )
 
         self._reset_dofs(env_ids)
@@ -1594,3 +1646,117 @@ class ManipLoco(LeggedRobot):
         elif evt.action == "decrease_eef_goal_dy":
             self.ee_goal_orn_delta_rpy[:, 2] -= 0.05
 """
+
+    def _extract_foot_contacts_from_robot_contacts(self, robot_contacts):
+        """
+        Extract foot contact information from robot contact data.
+        
+        Args:
+            robot_contacts: Contact information from self.robot.get_contacts()
+        
+        Returns:
+            torch.Tensor: Boolean tensor indicating foot contacts (num_envs, 4)
+        """
+        # Initialize foot contact tensor
+        foot_contacts = torch.zeros(self.num_envs, 4, dtype=torch.bool, device=self.device)
+        
+        if robot_contacts is None or len(robot_contacts) == 0:
+            return foot_contacts
+        
+        # Get the foot link indices (these should match your feet_indices)
+        foot_link_indices = [19,20,21,22]
+        
+        # Extract contact information
+        if 'valid_mask' in robot_contacts:
+            # Parallel environment case
+            valid_contacts = torch.tensor(robot_contacts['valid_mask'], device=self.device), 
+            link_a = torch.tensor(robot_contacts['link_a'],device=self.device)
+            link_b = torch.tensor(robot_contacts['link_b'],device=self.device)
+            force_a = torch.tensor(robot_contacts['force_a'],device=self.device)
+            force_b = torch.tensor(robot_contacts['force_b'],device=self.device)
+            
+            
+            # For each environment
+            for env_idx in range(self.num_envs):
+                if valid_contacts[0][env_idx].any():
+                    env_contacts = valid_contacts[0][env_idx]
+                    
+            #         # Check which foot links are in contact
+                    for foot_idx, foot_link_idx in enumerate(foot_link_indices):
+                        # Check if this foot link is involved in any contact
+                        l_a_mask=link_a[env_idx]
+                        l_b_mask=link_b[env_idx]
+                        foot_in_contact = torch.logical_or(
+                            l_a_mask == foot_link_idx,
+                            l_b_mask == foot_link_idx
+                        )
+                        # print(f'foot_in_conatct: {foot_in_contact}')
+                        # contact_forces = torch.where(
+                        #         foot_in_contact,
+                        #         torch.norm(force_a[env_idx, env_contacts], dim=-1),
+                        #         torch.norm(force_b[env_idx, env_contacts], dim=-1)
+                            # )
+                        # print(f'contact_forces:{contact_forces}')
+                        # if torch.any(contact_forces > 1.5):
+                        #     foot_contacts[env_idx, foot_idx] = True
+                        temp=torch.norm(force_a[env_idx, env_contacts], dim=-1)
+                        if foot_in_contact.any():
+                            # Check if the contact force is above threshold
+                            contact_forces = torch.where(
+                                link_a[env_idx] == foot_link_idx,
+                                torch.norm(force_a[env_idx], dim=-1),
+                                torch.norm(force_b[env_idx], dim=-1)
+                            )
+                            
+                            # Set contact if force is above threshold
+                            if torch.any(contact_forces > 1.5):
+                                foot_contacts[env_idx, foot_idx] = True
+        else:
+            # Non-parallel environment case
+            link_a = torch.tensor(robot_contacts['link_a'], device=self.device)
+            link_b = torch.tensor(robot_contacts['link_b'], device=self.device)
+            force_a = torch.tensor(robot_contacts['force_a'], device=self.device)
+            force_b = torch.tensor(robot_contacts['force_b'], device=self.device)
+        
+            # Check which foot links are in contact
+            for foot_idx, foot_link_idx in enumerate(foot_link_indices):
+                # Check if this foot link is involved in any contact
+                foot_in_contact = torch.logical_or(
+                    link_a == foot_link_idx,
+                    link_b == foot_link_idx
+                )
+                
+                if foot_in_contact.any():
+                    # Check if the contact force is above threshold
+                    contact_forces = torch.where(
+                        link_a == foot_link_idx,
+                        torch.norm(force_a, dim=-1),
+                        torch.norm(force_b, dim=-1)
+                    )
+                    
+                    # Set contact if force is above threshold
+                    if torch.any(contact_forces > 1.5):
+                        foot_contacts[0, foot_idx] = True  # Assuming single environment
+        
+        return foot_contacts
+
+    def setup_debug_camera(self, env_idx=0):
+        """Setup camera to focus on specific environment"""
+        if hasattr(self, 'scene') and self.scene is not None:
+            # Get the robot position for the target environment
+            robot_pos = self.robot.get_pos()[env_idx].cpu().numpy()
+            
+            # Create a camera focused on this environment
+            camera = self.scene.add_camera(
+                name="debug_camera",
+                width=1280,
+                height=720,
+                fov=60.0
+            )
+            
+            # Position camera to look at the robot
+            camera_pos = robot_pos + np.array([2.0, 2.0, 1.5])  # Offset from robot
+            camera.set_position(camera_pos)
+            camera.look_at(robot_pos)
+            
+            return camera
