@@ -48,10 +48,10 @@ from legged_gym.envs.bipedal_walker.bipedal_walker_config import BipedalWalkerCf
 from legged_gym.envs.bipedal_walker.bipedal_walker import BipedalWalker
 
 from legged_gym.envs.b1z1.b1z1_config import B1Z1RoughCfg, B1Z1RoughCfgPPO
-from legged_gym.envs.b1z1.manip_loco import ManipLoco
+from legged_gym.envs.b1z1.b1z1 import B1Z1
 
 
-from legged_gym.envs.b1z1.b1z1_config import B1Z1RoughCfg, B1Z1RoughCfgPPO
+from legged_gym.envs.b1z1.b1z1_config import B1Z1RoughCfg1, B1Z1RoughCfg, B1Z1RoughCfgPPO
 from legged_gym.envs.manip_loco.manip_loco import ManipLoco
 
 from legged_gym.utils.task_registry import task_registry
@@ -61,4 +61,5 @@ task_registry.register( "go2_rough", GO2, GO2RoughCfg(), GO2RoughCfgPPO())
 task_registry.register( "go2_deploy", GO2Deploy, GO2DeployCfg(), GO2DeployCfgPPO())
 task_registry.register( "bipedal_walker", BipedalWalker, BipedalWalkerCfg(), BipedalWalkerCfgPPO())
 task_registry.register( "b1", B1, B1Cfg(), B1CfgPPO())
+task_registry.register( "b1z1", B1Z1, B1Z1RoughCfg1(), B1Z1RoughCfgPPO())
 task_registry.register( "manipuloco", ManipLoco, B1Z1RoughCfg(), B1Z1RoughCfgPPO())

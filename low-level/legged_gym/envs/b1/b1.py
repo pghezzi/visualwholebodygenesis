@@ -26,7 +26,8 @@ class B1(LeggedRobot):
         Args:
             env_ids (List[int]): Environemnt ids
         """
-        self.dof_pos[env_ids] = self.default_dof_pos * gs_rand_float(0.8, 1.2, (len(env_ids), self.num_dofs), device=self.device)
+        num_dofs = len(self.cfg.asset.dof_names)
+        self.dof_pos[env_ids] = self.default_dof_pos * gs_rand_float(0.8, 1.2, (len(env_ids), num_dofs), device=self.device)
         self.dof_vel[env_ids] = 0.
 
         self.robot.set_dofs_position(
@@ -68,15 +69,28 @@ class B1(LeggedRobot):
         # Reward long steps
         contact = self.link_contact_forces[:, self.feet_indices, 2] > 2.
         contact_filt = torch.logical_or(contact, self.last_contacts) 
+        # print(f'contact: {contact}, contact_filt: {contact_filt}, last_contacts: {self.last_contacts}')
         self.last_contacts = contact
         first_contact = (self.feet_air_time > 0.) * contact_filt
         self.feet_air_time += self.dt
-        
+        # print(f'feet_air_time: {self.feet_air_time}, first_contact: {first_contact}')
         if self.cfg.rewards.feet_aritime_allfeet:
-           rew_airTime = torch.sum((self.env.feet_air_time - 0.5) * first_contact, dim=1)
+           rew_airTime = torch.sum((self.feet_air_time - 0.5) * first_contact, dim=1)
         else:
-            rew_airTime = torch.sum((self.env.feet_air_time[:, :2] - 0.5) * first_contact[:, :2], dim=1)
+            rew_airTime = torch.sum((self.feet_air_time[:, :2] - 0.5) * first_contact[:, :2], dim=1)
         rew_airTime = torch.sum((self.feet_air_time - 0.2) * first_contact, dim=1) # reward only on first contact with the ground
         rew_airTime *= torch.norm(self.commands[:, :2], dim=1) > 0.1 #no reward for zero command
         self.feet_air_time *= ~contact_filt
+        # print(f'rew_airTime: {rew_airTime}')
+        # print(f'feet_air_time: {self.feet_air_time}')
         return rew_airTime
+
+    def _compute_torques(self, actions):
+        # control_type = 'P'
+        action_scale = torch.tensor(self.cfg.control.action_scale, device=self.device)
+        actions_scaled = actions * action_scale
+        torques = (
+            self.batched_p_gains * (actions_scaled + self.default_dof_pos - self.dof_pos)
+            - self.batched_d_gains * self.dof_vel
+        )
+        return torques
