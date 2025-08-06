@@ -4,9 +4,12 @@ import os
 
 from legged_gym.envs import *
 from legged_gym.utils import  get_args, export_policy_as_jit, task_registry, Logger
-
+import keyboard
 import numpy as np
 import torch
+from legged_gym.utils.gs_utils import gs_cart2sphere
+
+from pynput.keyboard import Key, Listener
 
 
 def play(args):
@@ -69,31 +72,141 @@ def play(args):
     camera_position_follow = camera_lookat_follow - camera_deviation_follow
     # for RECORD_FRAMES
     stop_record = 400
+
+    def on_press(key):
+        print(f"key: {key}")
+        if hasattr(key, 'char'):
+            key = key.char
+        action = None
+        if key == "8":
+            action = "forward"
+        elif key == "2":
+            action = "reverse"
+        elif key == "4":
+            action = "turn_left"
+        elif key == "6":
+            action = "turn_right"
+        elif key == "5":
+            action = "stop_linear"
+        elif key == "0":
+            action =  "stop_angular"
+        elif key == "{":
+            action = "increase_eef_goal_l"
+        elif key == "}":
+            action = "decrease_eef_goal_l"
+        elif key == "[":
+            action = "increase_eef_goal_p"
+        elif key == "]":
+            action = "increase_eef_goal_y"
+        elif key == "1":
+            action = "decrease_eef_goal_y"
+        elif key == "*":
+            action = "increase_eef_goal_dr"
+        elif key == "x":
+            action = "decrease_eef_goal_dr"
+        elif key == "c":
+            action ="increse_eef_goal_dp"
+        elif key == "v":
+            action = "decrease_eef_goal_dp"
+
+        print(f"action: {action}")
+        if action == "stop_linear":
+            env.commands[:, 0] = 0
+        elif action == "forward":
+            env.commands[:, 0] += 0.05
+        elif action == "reverse":
+            env.commands[:, 0] -= 0.05
+
+        if action == "stop_angular":
+            env.commands[:, 2] = 0
+        if action == "turn_left":
+            env.commands[:, 2] += 0.05
+        elif action == "turn_right":
+            env.commands[:, 2] -= 0.05
+        print(f"action: {env.commands[0]}")
+
+        # Sphere position
+        # if evt.action == "increase_eef_goal_l":
+        #     self.curr_ee_goal_sphere[:, 0] += 0.05
+        # elif evt.action == "decrease_eef_goal_l":
+        #     self.curr_ee_goal_sphere[:, 0] -= 0.05
+
+        # if evt.action == "increase_eef_goal_p":
+        #     self.curr_ee_goal_sphere[:, 1] += 0.05
+        # elif evt.action == "decrease_eef_goal_p":
+        #     self.curr_ee_goal_sphere[:, 1] -= 0.05
+
+        # if evt.action == "increase_eef_goal_y":
+        #     self.curr_ee_goal_sphere[:, 2] += 0.05
+        # elif evt.action == "decrease_eef_goal_y":
+        #     self.curr_ee_goal_sphere[:, 2] -= 0.05
+
+        # cartesian position
+        if hasattr(env, 'curr_ee_goal_cart'):
+            if action == "increase_eef_goal_l":
+                env.curr_ee_goal_cart[:, 0] += 0.05
+            elif action == "decrease_eef_goal_l":
+                env.curr_ee_goal_cart[:, 0] -= 0.05
+
+        if hasattr(env, 'curr_ee_goal_cart'):
+            if action == "increase_eef_goal_p":
+                env.curr_ee_goal_cart[:, 1] += 0.05
+            elif action == "decrease_eef_goal_p":
+                env.curr_ee_goal_cart[:, 1] -= 0.05
+
+        if hasattr(env, 'curr_ee_goal_cart'):
+            if action == "increase_eef_goal_y":
+                env.curr_ee_goal_cart[:, 2] += 0.05
+            elif action == "decrease_eef_goal_y":
+                env.curr_ee_goal_cart[:, 2] -= 0.05
+
+        if hasattr(env, 'curr_ee_goal_cart'):
+            env.curr_ee_goal_sphere = gs_cart2sphere(env.curr_ee_goal_cart)
+        
+        # orientation
+        if hasattr(env, 'ee_goal_orn_delta_rpy'):
+            if action == "increase_eef_goal_dr":
+                env.ee_goal_orn_delta_rpy[:, 0] += 0.05
+            elif action == "decrease_eef_goal_dr":
+                env.ee_goal_orn_delta_rpy[:, 0] -= 0.05
+
+        if hasattr(env, 'ee_goal_orn_delta_rpy'):
+            if action == "increse_eef_goal_dp":
+                env.ee_goal_orn_delta_rpy[:, 1] += 0.05
+            elif action == "decrease_eef_goal_dp":
+                env.ee_goal_orn_delta_rpy[:, 1] -= 0.05
+        
+        if hasattr(env, 'ee_goal_orn_delta_rpy'):
+            if action == "increase_eef_goal_dy":
+                env.ee_goal_orn_delta_rpy[:, 2] += 0.05
+            elif action == "decrease_eef_goal_dy":
+                env.ee_goal_orn_delta_rpy[:, 2] -= 0.05
+
     if RECORD_FRAMES:
         env.floating_camera.start_recording()
-
-    for i in range(10*int(env.max_episode_length)):
-        actions = policy(obs.detach())
-        obs, _, rews, dones, infos = env.step(actions.detach())
-        if MOVE_CAMERA:
-            camera_position += camera_vel * env.dt
-            env.set_camera(camera_position, camera_position + camera_direction)
-            env.floating_camera.render()
-        if FOLLOW_ROBOT:
-            # refresh where camera looks at(robot 0 base)
-            camera_lookat_follow = env.base_pos[robot_index, :].cpu().numpy()
-            # refresh camera's position
-            camera_position_follow = camera_lookat_follow - camera_deviation_follow
-            env.set_camera(camera_position_follow, camera_lookat_follow)
-            env.floating_camera.render()
-        if RECORD_FRAMES and i == stop_record:
-            mp4name = f"{train_cfg.experiment_name}_demo.mp4"
-            env.floating_camera.stop_recording(save_to_filename=mp4name, fps=30)
-            print("Saved recording to " + mp4name)
+    with Listener(on_press=on_press) as listener:
+        for i in range(10*int(env.max_episode_length)):
+            actions = policy(obs.detach())
+            obs, _, rews, dones, infos = env.step(actions.detach())
+            if MOVE_CAMERA:
+                camera_position += camera_vel * env.dt
+                env.set_camera(camera_position, camera_position + camera_direction)
+                env.floating_camera.render()
+            if FOLLOW_ROBOT:
+                # refresh where camera looks at(robot 0 base)
+                camera_lookat_follow = env.base_pos[robot_index, :].cpu().numpy()
+                # refresh camera's position
+                camera_position_follow = camera_lookat_follow - camera_deviation_follow
+                env.set_camera(camera_position_follow, camera_lookat_follow)
+                env.floating_camera.render()
+            if RECORD_FRAMES and i == stop_record:
+                mp4name = f"{train_cfg.experiment_name}_demo.mp4"
+                env.floating_camera.stop_recording(save_to_filename=mp4name, fps=30)
+                print("Saved recording to " + mp4name)
         
         # print debug info
-        # print("base lin vel: ", env.base_lin_vel[robot_index, :].cpu().numpy())
-        # print("base yaw angle: ", env.base_euler[robot_index, 2].item())
+        print("base lin vel: ", env.base_lin_vel[robot_index, :].cpu().numpy())
+        print("base yaw angle: ", env.base_euler[robot_index, 2].item())
         #if i < stop_state_log:
         #    logger.log_states(
         #        {
@@ -103,23 +216,23 @@ def play(args):
         #            'dof_torque': env.torques[robot_index, joint_index].item(),
         #            'command_x': env.commands[robot_index, 0].item(),
         #            'command_y': env.commands[robot_index, 1].item(),
-        #            'command_yaw': env.commands[robot_index, 2].item(),
-        #            'base_vel_x': env.base_lin_vel[robot_index, 0].item(),
-        #            'base_vel_y': env.base_lin_vel[robot_index, 1].item(),
-        #            'base_vel_z': env.base_lin_vel[robot_index, 2].item(),
+        #           'command_yaw': env.commands[robot_index, 2].item(),
+        #          'base_vel_x': env.base_lin_vel[robot_index, 0].item(),
+        #           'base_vel_y': env.base_lin_vel[robot_index, 1].item(),
+        #           'base_vel_z': env.base_lin_vel[robot_index, 2].item(),
         #            'base_vel_yaw': env.base_ang_vel[robot_index, 2].item(),
         #            'contact_forces_z': env.link_contact_forces[robot_index, env.feet_indices, 2].cpu().numpy()
-        #        }
+        #       }
         #    )
         #elif i==stop_state_log:
         #    logger.plot_states()
-        if  0 < i < stop_rew_log:
-            if infos["episode"]:
-                num_episodes = torch.sum(env.reset_buf).item()
-                if num_episodes>0:
-                    logger.log_rewards(infos["episode"], num_episodes)
-        elif i==stop_rew_log:
-            logger.print_rewards()
+        #if  0 < i < stop_rew_log:
+        #    if infos["episode"]:
+        #       num_episodes = torch.sum(env.reset_buf).item()
+        #        if num_episodes>0:
+        #            logger.log_rewards(infos["episode"], num_episodes)
+        #elif i==stop_rew_log:
+        #    logger.print_rewards()
 
 if __name__ == '__main__':
     EXPORT_POLICY = True
