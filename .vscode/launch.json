@@ -14,14 +14,65 @@
             "args": "${command:pickArgs}"
         },
         {
+            "name": "Debug train.py --task manipuloco --headless -B 10",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "/home/lily-hcrlab/visualwholebodygenesis/low-level/legged_gym/scripts/train.py",
+            "console": "integratedTerminal",
+            "args": ["--task", "manipuloco","--headless", "-B 10"],
+            "cwd": "${workspaceFolder}",
+            "python": "/home/lily-hcrlab/miniconda3/envs/genesis_lr_test/bin/python"
+        },
+        {
             "name": "Debug train.py --task manipuloco",
             "type": "debugpy",
             "request": "launch",
             "program": "/home/lily-hcrlab/visualwholebodygenesis/low-level/legged_gym/scripts/train.py",
             "console": "integratedTerminal",
-            "args": ["--task", "manipuloco","--headless"],
+            "args": ["--task", "manipuloco", "-B 10"],
             "cwd": "${workspaceFolder}",
             "python": "/home/lily-hcrlab/miniconda3/envs/genesis_lr_test/bin/python"
+        },
+        {
+            "name": "python train.py --task manipuloco",
+            "type": "python",
+            "request": "launch",
+            "program": "/home/lily-hcrlab/visualwholebodygenesis/low-level/legged_gym/scripts/train.py",
+            "console": "integratedTerminal",
+            "args": ["--task", "manipuloco", "-B 10"],
+            "cwd": "${workspaceFolder}",
+            "python": "/home/lily-hcrlab/miniconda3/envs/genesis_lr_test/bin/python"
+        },
+        {
+            "name": "Debug play.py --task manipuloco --ckpt 12000 ",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "/home/lily-hcrlab/visualwholebodygenesis/low-level/legged_gym/scripts/play.py",
+            "console": "integratedTerminal",
+            "args": ["--task", "manipuloco", "--ckpt", "12000"],
+            "cwd": "${workspaceFolder}",
+            "python": "/home/lily-hcrlab/miniconda3/envs/genesis_lr_test/bin/python"
+        },
+        {
+            "name": "Debug train.py --task b1  -> genesis_lr_test",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "/home/lily-hcrlab/visualwholebodygenesis/low-level/legged_gym/scripts/train.py",
+            "console": "integratedTerminal",
+            "args": ["--task", "b1", "-B 10"],
+            "cwd": "${workspaceFolder}",
+            "python": "/home/lily-hcrlab/miniconda3/envs/genesis_lr_test/bin/python"
+        },
+
+        {
+            "name": "Debug python train.py --exptid SOME_YOUR_DESCRIPTION_2 --proj_name b1z1-low --task b1z1 --sim_device cuda:0 --rl_device cuda:0 --headless",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "~/test_env/visual_wholebody/low-level/legged_gym/scripts/train.py",
+            "console": "integratedTerminal",
+            "args": ["--exptid", "SOME_YOUR_DESCRIPTION_2", "--proj_name", "b1z1-low", "--task", "b1z1", "--sim_device", "cuda:0", "--rl_device", "cuda:0", "--headless"],
+            "cwd": "${workspaceFolder}",
+            "python": "/home/lily-hcrlab/miniconda3/envs/b1z1/bin/python"
         }
     ]
 }
