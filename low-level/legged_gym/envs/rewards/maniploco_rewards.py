@@ -173,6 +173,7 @@ class ManipLoco_rewards:
     
     def _reward_collision(self):
         rew = torch.sum(1.*(torch.norm(self.env.contact_forces[:, self.env.penalized_contact_indices, :], dim=-1) > 0.1), dim=1)
+        # print(f'contact_forces: {self.env.contact_forces[:, self.env.penalized_contact_indices, :]}, penalized_contact_indices: {self.env.penalized_contact_indices}')
         return rew, rew
         
     def _reward_stand_still(self):
@@ -201,9 +202,9 @@ class ManipLoco_rewards:
         
         self.env.last_contact_forces = self.env.force_sensor_tensor.clone()
         result[self.env.episode_length_buf<50] = 0.
-        for i in range(result.shape[0]):
-            if result[i] > 0:
-                print(f'result[i]: {result[i]}')
+        #for i in range(result.shape[0]):
+        #    if result[i] > 0:
+        #        print(f'result[i]: {result[i]}')
         return result, result
     
     def _reward_alive(self):

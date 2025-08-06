@@ -34,6 +34,7 @@ import numpy as np
 
 class B1Z1RoughCfg1( LeggedRobotCfg ):
 
+
     class commands ( LeggedRobotCfg.commands ) :
         curriculum = True
         num_commands = 4
@@ -514,6 +515,6 @@ class B1Z1RoughCfgPPO(LeggedRobotCfgPPO):
         run_name = ''
         # load and resume
         resume = False
-        load_run = "Jul07_17-32-14_" # -1 = last run
-        checkpoint = "1000" # -1 = last saved model
+        load_run = "Aug01_15-45-33_" # -1 = last run
+        checkpoint = "45000" # -1 = last saved model
         resume_path = None # updated from load_run and chkpt

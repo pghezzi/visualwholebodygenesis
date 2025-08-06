@@ -189,7 +189,7 @@ class B1Z1RoughCfg( LeggedRobotCfg ):
         ]
         foot_name = ["foot"]
         gripper_name = "gripperMover" #"gripperMover"
-        penalize_contacts_on = ["thigh", "base", "calf"]
+        penalize_contacts_on = ["thigh", "trunk", "calf"]
         terminate_after_contacts_on = ["base", "thigh"]
         self_collisions = 0 # 1 to disable, 0 to enable...bitwise filter
         flip_visual_attachments = False
@@ -384,6 +384,6 @@ class B1Z1RoughCfgPPO(LeggedRobotCfgPPO):
         run_name = ''
         # load and resume
         resume = False
-        load_run = "Jul07_17-32-14_" # -1 = last run
-        checkpoint = "1000" # -1 = last saved model
+        load_run = "Aug04_13-16-28_" # -1 = last run
+        checkpoint = "45000" # -1 = last saved model
         resume_path = None # updated from load_run and chkpt
